@@ -59,42 +59,57 @@
 
     <!-- Main Content -->
     <main class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-        <!-- Flight Selection -->
+        <!-- Available Flights -->
         <div class="px-4 py-5 sm:p-6 bg-white shadow sm:rounded-lg mb-6">
-            <h2 class="text-lg font-medium text-gray-900 mb-4">Select Your Flight</h2>
-            <div class="grid grid-cols-1 gap-y-6 sm:grid-cols-2 sm:gap-x-8">
-                <div>
-                    <label for="departure" class="block text-sm font-medium text-gray-700">From</label>
-                    <select id="departure" name="departure" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-primary focus:border-indigo-primary sm:text-sm rounded-md">
-                        <option value="">Select departure city</option>
-                        <option value="COK">Cochin (COK)</option>
-                        <option value="BLR">Bangalore (BLR)</option>
-                        <option value="DEL">Delhi (DEL)</option>
-                    </select>
-                </div>
+            <h2 class="text-lg font-medium text-gray-900 mb-4">Available Flights</h2>
+            <div class="grid grid-cols-1 gap-4" id="availableFlights">
+                <!-- Flights will be populated here by booking.js -->
+            </div>
+        </div>
 
+        <!-- Selected Flight Details -->
+        <div id="selectedFlightDetails" class="px-4 py-5 sm:p-6 bg-white shadow sm:rounded-lg mb-6 hidden">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-lg font-medium text-gray-900">Flight Details</h2>
+                <button onclick="backToFlights()" class="text-sm text-indigo-600 hover:text-indigo-900">
+                    ← Back to flights
+                </button>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
-                    <label for="arrival" class="block text-sm font-medium text-gray-700">To</label>
-                    <select id="arrival" name="arrival" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-primary focus:border-indigo-primary sm:text-sm rounded-md">
-                        <option value="">Select arrival city</option>
-                        <option value="BOM">Mumbai (BOM)</option>
-                        <option value="MAA">Chennai (MAA)</option>
-                        <option value="HYD">Hyderabad (HYD)</option>
-                    </select>
+                    <dl class="grid grid-cols-1 gap-4">
+                        <div>
+                            <dt class="text-sm font-medium text-gray-500">Flight Number</dt>
+                            <dd id="flightNumberDetail" class="mt-1 text-lg font-semibold text-gray-900"></dd>
+                        </div>
+                        <div>
+                            <dt class="text-sm font-medium text-gray-500">Route</dt>
+                            <dd id="routeDetail" class="mt-1 text-lg font-semibold text-gray-900"></dd>
+                        </div>
+                        <div>
+                            <dt class="text-sm font-medium text-gray-500">Aircraft</dt>
+                            <dd id="aircraftDetail" class="mt-1 text-lg font-semibold text-gray-900"></dd>
+                        </div>
+                    </dl>
                 </div>
-
                 <div>
-                    <label for="date" class="block text-sm font-medium text-gray-700">Date</label>
-                    <input type="date" id="date" name="date" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-primary focus:border-indigo-primary sm:text-sm rounded-md">
-                </div>
-
-                <div>
-                    <label for="aircraft" class="block text-sm font-medium text-gray-700">Aircraft</label>
-                    <select id="aircraft" name="aircraft" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-primary focus:border-indigo-primary sm:text-sm rounded-md">
-                        <option value="">Select aircraft type</option>
-                        <option value="A320">Airbus A320</option>
-                        <option value="A330">Airbus A330</option>
-                    </select>
+                    <dl class="grid grid-cols-1 gap-4">
+                        <div>
+                            <dt class="text-sm font-medium text-gray-500">Departure</dt>
+                            <dd id="departureDetail" class="mt-1 text-lg font-semibold text-gray-900"></dd>
+                        </div>
+                        <div>
+                            <dt class="text-sm font-medium text-gray-500">Arrival</dt>
+                            <dd id="arrivalDetail" class="mt-1 text-lg font-semibold text-gray-900"></dd>
+                        </div>
+                        <div>
+                            <dt class="text-sm font-medium text-gray-500">Available Seats</dt>
+                            <dd id="seatsDetail" class="mt-1">
+                                <span id="economySeats" class="text-sm font-medium bg-green-100 text-green-800 px-2 py-1 rounded-full mr-2"></span>
+                                <span id="businessSeats" class="text-sm font-medium bg-yellow-100 text-yellow-800 px-2 py-1 rounded-full"></span>
+                            </dd>
+                        </div>
+                    </dl>
                 </div>
             </div>
         </div>
