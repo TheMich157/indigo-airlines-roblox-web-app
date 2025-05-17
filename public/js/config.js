@@ -2,57 +2,62 @@
 const config = {
     // API endpoints
     api: {
-        base: '/api',
+        baseUrl: '/api',
         endpoints: {
-            // Auth endpoints
             auth: {
-                login: '/auth/login',
-                logout: '/auth/logout',
-                verify: '/auth/verify',
-                checkGamepass: '/auth/check-gamepass'
+                session: '/api/auth/session',
+                verify: '/api/auth/verify',
+                logout: '/api/auth/logout',
+                checkGamepass: '/api/auth/check-gamepass'
             },
-            // Booking endpoints
-            booking: {
-                create: '/bookings/create',
-                get: '/bookings/get',
-                cancel: '/bookings/cancel',
-                seats: '/bookings/seats'
-            },
-            // Flight endpoints
             flights: {
-                create: '/flights/create',
-                list: '/flights/list',
-                update: '/flights/update',
-                delete: '/flights/delete'
+                list: '/api/flights',
+                create: '/api/flights/create',
+                update: '/api/flights/update',
+                delete: '/api/flights/delete',
+                schedule: '/api/flights/schedule',
+                featured: '/api/flights/featured'
             },
-            // ATC endpoints
+            booking: {
+                create: '/api/booking/create',
+                cancel: '/api/booking/cancel',
+                list: '/api/booking/list'
+            },
             atc: {
-                clearance: '/atc/clearance',
-                weather: '/atc/weather',
-                activeFlights: '/atc/active-flights',
-                flightStatus: '/atc/flight-status',
-                delay: '/atc/delay',
+                activeFlights: '/api/atc/active-flights',
+                clearance: '/api/atc/clearance',
+                weather: '/api/atc/weather',
                 voice: {
-                    join: '/atc/voice/join',
-                    leave: '/atc/voice/leave'
+                    join: '/api/atc/voice/join',
+                    leave: '/api/atc/voice/leave'
                 }
             },
-            // Pilot endpoints
             pilot: {
-                flightPlan: '/pilot/flight-plan',
-                mileage: '/pilot/mileage',
-                rankUp: '/pilot/rank-up'
+                flightPlan: '/api/pilot/flight-plan',
+                mileage: '/api/pilot/mileage',
+                activityLog: '/api/pilot/activity-log'
+            },
+            admin: {
+                stats: '/api/admin/stats',
+                users: '/api/admin/users',
+                pilots: '/api/admin/pilots',
+                logs: '/api/admin/logs'
             }
         }
     },
 
-    // Socket.IO configuration
-    socket: {
-        url: window.location.origin,
-        options: {
-            transports: ['websocket'],
-            autoConnect: true
-        }
+    // Roblox integration
+    roblox: {
+        origin: 'https://www.roblox.com',
+        loginUrl: 'https://www.roblox.com/login',
+        groupId: '12345678',
+        gameId: '87654321'
+    },
+
+    // Social links
+    socialLinks: {
+        discord: 'https://discord.gg/indigoairlines',
+        robloxGroup: 'https://www.roblox.com/groups/12345678/IndiGo-Airlines'
     },
 
     // Aircraft configurations
@@ -63,13 +68,19 @@ const config = {
                 business: {
                     rows: 2,
                     seatsPerRow: 6,
-                    price: 12000 // INR
+                    requiresGamepass: true
                 },
                 economy: {
-                    rows: 30,
+                    rows: 26,
                     seatsPerRow: 6,
-                    price: 5000 // INR
+                    requiresGamepass: false
                 }
+            },
+            seatMap: {
+                totalRows: 28,
+                seatsPerRow: 6,
+                exitRows: [11, 12],
+                businessClassRows: [1, 2]
             }
         },
         A330: {
@@ -78,133 +89,161 @@ const config = {
                 business: {
                     rows: 3,
                     seatsPerRow: 8,
-                    price: 15000 // INR
+                    requiresGamepass: true
                 },
                 economy: {
                     rows: 41,
                     seatsPerRow: 8,
-                    price: 7000 // INR
+                    requiresGamepass: false
                 }
+            },
+            seatMap: {
+                totalRows: 44,
+                seatsPerRow: 8,
+                exitRows: [24, 25],
+                businessClassRows: [1, 2, 3]
             }
         }
     },
 
-    // Airport routes
+    // Airports
     airports: {
-        COK: {
-            name: 'Cochin International Airport',
-            code: 'COK',
-            city: 'Kochi',
-            coordinates: {
-                lat: 10.1520,
-                lng: 76.3919
-            }
-        },
-        BLR: {
-            name: 'Kempegowda International Airport',
-            code: 'BLR',
-            city: 'Bangalore',
-            coordinates: {
-                lat: 13.1986,
-                lng: 77.7066
-            }
-        },
         DEL: {
-            name: 'Indira Gandhi International Airport',
             code: 'DEL',
+            name: 'Indira Gandhi International Airport',
             city: 'Delhi',
-            coordinates: {
-                lat: 28.5562,
-                lng: 77.1000
-            }
+            country: 'India',
+            latitude: 28.5562,
+            longitude: 77.1000
         },
         BOM: {
-            name: 'Chhatrapati Shivaji Maharaj International Airport',
             code: 'BOM',
+            name: 'Chhatrapati Shivaji Maharaj International Airport',
             city: 'Mumbai',
-            coordinates: {
-                lat: 19.0896,
-                lng: 72.8656
-            }
+            country: 'India',
+            latitude: 19.0896,
+            longitude: 72.8656
+        },
+        BLR: {
+            code: 'BLR',
+            name: 'Kempegowda International Airport',
+            city: 'Bangalore',
+            country: 'India',
+            latitude: 13.1986,
+            longitude: 77.7066
         },
         MAA: {
-            name: 'Chennai International Airport',
             code: 'MAA',
+            name: 'Chennai International Airport',
             city: 'Chennai',
-            coordinates: {
-                lat: 12.9941,
-                lng: 80.1709
-            }
+            country: 'India',
+            latitude: 12.9941,
+            longitude: 80.1709
+        },
+        CCU: {
+            code: 'CCU',
+            name: 'Netaji Subhas Chandra Bose International Airport',
+            city: 'Kolkata',
+            country: 'India',
+            latitude: 22.6520,
+            longitude: 88.4463
         },
         HYD: {
-            name: 'Rajiv Gandhi International Airport',
             code: 'HYD',
+            name: 'Rajiv Gandhi International Airport',
             city: 'Hyderabad',
-            coordinates: {
-                lat: 17.2403,
-                lng: 78.4294
-            }
+            country: 'India',
+            latitude: 17.2403,
+            longitude: 78.4294
         }
     },
 
-    // ATC clearance types
-    clearanceTypes: [
-        'ATC Clearance',
-        'Takeoff Clearance',
-        'Landing Clearance',
-        'Taxi Clearance',
-        'Pushback Clearance',
-        'Climb Clearance',
-        'Descent Clearance',
-        'Enroute Clearance',
-        'Crossing Clearance',
-        'Approach Clearance',
-        'Holding Clearance',
-        'Departure Clearance',
-        'VFR Flight Following',
-        'Special Use Airspace Clearance',
-        'Oceanic Clearance'
-    ],
-
-    // Flight statuses
-    flightStatuses: {
-        SCHEDULED: 'scheduled',
-        BOARDING: 'boarding',
-        DEPARTED: 'departed',
-        ARRIVED: 'arrived',
-        DELAYED: 'delayed',
-        CANCELLED: 'cancelled'
-    },
-
-    // User roles
-    roles: {
-        USER: 'user',
-        PILOT: 'pilot',
-        FIRST_OFFICER: 'first_officer',
-        ATC: 'atc',
-        SUPERVISOR: 'supervisor',
-        ADMIN: 'admin'
-    },
-
-    // Pilot ranks and required mileage
+    // Pilot ranks
     pilotRanks: [
-        { name: 'Trainee', mileage: 0 },
-        { name: 'Junior First Officer', mileage: 100 },
-        { name: 'First Officer', mileage: 500 },
-        { name: 'Senior First Officer', mileage: 1000 },
-        { name: 'Captain', mileage: 2000 },
-        { name: 'Senior Captain', mileage: 5000 }
+        {
+            name: 'Trainee First Officer',
+            mileageRequired: 0
+        },
+        {
+            name: 'First Officer',
+            mileageRequired: 5000
+        },
+        {
+            name: 'Senior First Officer',
+            mileageRequired: 15000
+        },
+        {
+            name: 'Captain',
+            mileageRequired: 30000
+        },
+        {
+            name: 'Senior Captain',
+            mileageRequired: 50000
+        },
+        {
+            name: 'Fleet Captain',
+            mileageRequired: 100000
+        }
     ],
 
-    // Voice channel frequencies
-    voiceChannels: {
-        GROUND: '121.5',
-        TOWER: '118.1',
-        APPROACH: '119.1',
-        DEPARTURE: '125.2',
-        CENTER: '127.4'
-    }
-};
+    // ATC positions
+    atcPositions: [
+        {
+            code: 'GND',
+            name: 'Ground',
+            frequency: '121.9'
+        },
+        {
+            code: 'TWR',
+            name: 'Tower',
+            frequency: '118.1'
+        },
+        {
+            code: 'APP',
+            name: 'Approach',
+            frequency: '119.1'
+        },
+        {
+            code: 'DEP',
+            name: 'Departure',
+            frequency: '125.2'
+        },
+        {
+            code: 'CTR',
+            name: 'Center',
+            frequency: '127.4'
+        }
+    ],
 
-// Export config for use in other modules
-window.config = config;
+    // Voice chat settings
+    voiceChat: {
+        enabled: true,
+        maxRange: 100,
+        falloff: 1.5,
+        atcRange: 500
+    },
+
+    // Weather update interval (in milliseconds)
+    weatherUpdateInterval: 300000, // 5 minutes
+
+    // Flight status update interval (in milliseconds)
+    flightStatusUpdateInterval: 10000, // 10 seconds
+
+    // Maximum booking window (in days)
+    maxBookingWindow: 30,
+
+    // Session timeout (in minutes)
+    sessionTimeout: 120,
+
+    // Default timezone
+    timezone: 'Asia/Kolkata',
+
+    // Date format
+    dateFormat: 'DD/MM/YYYY HH:mm',
+
+    // Maximum concurrent flights per pilot
+    maxConcurrentFlights: 1,
+
+    // Minimum turnaround time (in minutes)
+    minTurnaroundTime: 30
+};
