@@ -131,35 +131,195 @@ document.addEventListener('DOMContentLoaded', () => {
         map.appendChild(legend);
     }
 
-    // Handle seat selection
+    // Handle seat selection with advanced validation
     async function handleSeatSelection(seatElement) {
-        if (!auth.isAuthenticated) {
-            utils.showNotification('Please login to select a seat', 'error');
-            return;
-        }
-
-        const seatClass = seatElement.getAttribute('data-class');
-        
-        // Check business class access
-        if (seatClass === 'business') {
-            const hasAccess = await checkBusinessClassAccess();
-            if (!hasAccess) {
-                businessClassModal.classList.remove('hidden');
+        try {
+            if (!auth.isAuthenticated) {
+                utils.showNotification('Please login to select a seat', 'error');
                 return;
             }
+
+            const seatClass = seatElement.getAttribute('data-class');
+            const seatNumber = seatElement.getAttribute('data-seat');
+            
+            // Check if seat is already occupied
+            if (seatElement.classList.contains('bg-gray-400')) {
+                utils.showNotification('This seat is already occupied', 'error');
+                return;
+            }
+
+            // Check for existing bookings
+            const hasExistingBooking = await checkExistingBooking();
+            if (hasExistingBooking) {
+                utils.showNotification('You already have a booking for this flight', 'error');
+                return;
+            }
+
+            // Check business class access
+            if (seatClass === 'business') {
+                const hasAccess = await checkBusinessClassAccess();
+                if (!hasAccess) {
+                    showBusinessClassModal();
+                    return;
+                }
+            }
+
+            // Check seat restrictions
+            const seatRestrictions = await checkSeatRestrictions(seatNumber, seatClass);
+            if (seatRestrictions.restricted) {
+                utils.showNotification(seatRestrictions.reason, 'error');
+                return;
+            }
+
+            // Hold seat temporarily
+            const seatHeld = await holdSeat(seatNumber);
+            if (!seatHeld) {
+                utils.showNotification('This seat is no longer available', 'error');
+                return;
+            }
+
+            // Update selected seat
+            if (selectedSeat) {
+                // Release previously held seat
+                await releaseSeat(selectedSeat.getAttribute('data-seat'));
+                selectedSeat.classList.remove('bg-indigo-primary', 'text-white');
+                selectedSeat.classList.add(selectedSeat.getAttribute('data-class') === 'business' ? 'bg-yellow-500' : 'bg-gray-200');
+            }
+
+            seatElement.classList.remove(seatClass === 'business' ? 'bg-yellow-500' : 'bg-gray-200');
+            seatElement.classList.add('bg-indigo-primary', 'text-white');
+            selectedSeat = seatElement;
+
+            // Start seat hold timer
+            startSeatHoldTimer();
+            
+            // Update booking summary with additional details
+            updateBookingSummary();
+
+        } catch (error) {
+            console.error('Error handling seat selection:', error);
+            utils.showNotification('Failed to select seat. Please try again.', 'error');
         }
+    }
 
-        // Update selected seat
-        if (selectedSeat) {
-            selectedSeat.classList.remove('bg-indigo-primary', 'text-white');
-            selectedSeat.classList.add(selectedSeat.getAttribute('data-class') === 'business' ? 'bg-yellow-500' : 'bg-gray-200');
+    // Check for existing booking
+    async function checkExistingBooking() {
+        try {
+            const flightId = document.getElementById('flightId').value;
+            const response = await utils.fetchAPI(`${config.api.endpoints.booking.check}?flightId=${flightId}`);
+            return response.hasBooking;
+        } catch (error) {
+            console.error('Error checking existing booking:', error);
+            return true; // Fail safe
         }
+    }
 
-        seatElement.classList.remove(seatClass === 'business' ? 'bg-yellow-500' : 'bg-gray-200');
-        seatElement.classList.add('bg-indigo-primary', 'text-white');
-        selectedSeat = seatElement;
+    // Check seat restrictions
+    async function checkSeatRestrictions(seatNumber, seatClass) {
+        try {
+            const response = await utils.fetchAPI('/api/booking/check-restrictions', {
+                method: 'POST',
+                body: JSON.stringify({
+                    seatNumber,
+                    seatClass,
+                    userId: auth.userInfo.id
+                })
+            });
+            return response;
+        } catch (error) {
+            console.error('Error checking seat restrictions:', error);
+            return { restricted: true, reason: 'Unable to verify seat restrictions' };
+        }
+    }
 
-        updateBookingSummary();
+    // Hold seat temporarily
+    async function holdSeat(seatNumber) {
+        try {
+            const response = await utils.fetchAPI('/api/booking/hold-seat', {
+                method: 'POST',
+                body: JSON.stringify({
+                    flightId: document.getElementById('flightId').value,
+                    seatNumber,
+                    userId: auth.userInfo.id
+                })
+            });
+            return response.success;
+        } catch (error) {
+            console.error('Error holding seat:', error);
+            return false;
+        }
+    }
+
+    // Release held seat
+    async function releaseSeat(seatNumber) {
+        try {
+            await utils.fetchAPI('/api/booking/release-seat', {
+                method: 'POST',
+                body: JSON.stringify({
+                    flightId: document.getElementById('flightId').value,
+                    seatNumber,
+                    userId: auth.userInfo.id
+                })
+            });
+        } catch (error) {
+            console.error('Error releasing seat:', error);
+        }
+    }
+
+    let holdTimer;
+    // Start seat hold timer
+    function startSeatHoldTimer() {
+        if (holdTimer) clearTimeout(holdTimer);
+        
+        const HOLD_DURATION = 300000; // 5 minutes
+        const warningTime = 60000; // 1 minute warning
+
+        // Show warning when 1 minute remains
+        setTimeout(() => {
+            if (selectedSeat) {
+                utils.showNotification('Your seat hold expires in 1 minute', 'warning');
+            }
+        }, HOLD_DURATION - warningTime);
+
+        // Release seat after hold duration
+        holdTimer = setTimeout(async () => {
+            if (selectedSeat) {
+                await releaseSeat(selectedSeat.getAttribute('data-seat'));
+                selectedSeat.classList.remove('bg-indigo-primary', 'text-white');
+                selectedSeat.classList.add(
+                    selectedSeat.getAttribute('data-class') === 'business' ? 
+                    'bg-yellow-500' : 'bg-gray-200'
+                );
+                selectedSeat = null;
+                bookingSummary.classList.add('hidden');
+                utils.showNotification('Your seat hold has expired', 'error');
+            }
+        }, HOLD_DURATION);
+    }
+
+    // Show business class modal with additional info
+    function showBusinessClassModal() {
+        businessClassModal.classList.remove('hidden');
+        
+        // Update modal content with dynamic pricing and benefits
+        const modalContent = document.querySelector('#businessClassModal .modal-content');
+        modalContent.innerHTML = `
+            <h3 class="text-lg font-medium mb-4">Business Class Benefits</h3>
+            <ul class="list-disc pl-5 mb-4">
+                <li>Priority boarding</li>
+                <li>Extra legroom</li>
+                <li>Premium meals</li>
+                <li>Lounge access</li>
+                <li>Additional baggage allowance</li>
+            </ul>
+            <p class="mb-4">Purchase the Business Class Gamepass to access these seats.</p>
+            <div class="flex justify-end">
+                <button onclick="window.location.href='${config.roblox.gamepassUrl}'"
+                    class="bg-indigo-primary text-white px-4 py-2 rounded hover:bg-indigo-secondary">
+                    Get Business Class Access
+                </button>
+            </div>
+        `;
     }
 
     // Check if user has business class access
