@@ -1,260 +1,252 @@
 // ATC Dashboard functionality
 document.addEventListener('DOMContentLoaded', () => {
-    // Check if user has ATC access
-    if (!auth.isAuthenticated || !auth.hasRole('atc')) {
-        window.location.href = '/';
-        return;
+    // DOM Elements
+    const dashboardContent = document.getElementById('dashboardContent');
+    const accessDenied = document.getElementById('accessDenied');
+    const activeFlightsList = document.getElementById('activeFlightsList');
+    const clearanceForm = document.getElementById('clearanceForm');
+    const joinVoiceBtn = document.getElementById('joinVoiceBtn');
+    const clearanceLog = document.getElementById('clearanceLog');
+
+    // Socket.IO connection
+    let socket;
+
+    // Initialize dashboard
+    async function initDashboard() {
+        if (!auth.isAuthenticated || !auth.isATC()) {
+            dashboardContent.classList.add('hidden');
+            accessDenied.classList.remove('hidden');
+            return;
+        }
+
+        dashboardContent.classList.remove('hidden');
+        accessDenied.classList.add('hidden');
+
+        // Initialize Socket.IO
+        initializeSocket();
+
+        // Load initial data
+        await Promise.all([
+            loadActiveFlights(),
+            loadWeatherInfo(),
+            populateClearanceTypes()
+        ]);
+
+        // Set up event listeners
+        setupEventListeners();
     }
 
-    // State management
-    let selectedFlight = null;
-    let voiceConnected = false;
+    // Initialize Socket.IO connection
+    function initializeSocket() {
+        socket = io(config.socket.url, config.socket.options);
 
-    // DOM Elements
-    const activeFlightsList = document.getElementById('activeFlightsList');
-    const selectedFlightInfo = document.getElementById('selectedFlightInfo');
-    const toggleVoiceBtn = document.getElementById('toggleVoice');
+        socket.on('connect', () => {
+            console.log('Connected to server');
+        });
 
-    // Initialize voice connection status
-    toggleVoiceBtn.addEventListener('click', toggleVoiceConnection);
+        socket.on('clearance_issued', (clearance) => {
+            addClearanceToLog(clearance);
+            utils.showNotification(`Clearance issued: ${clearance.type}`, 'success');
+        });
 
-    // Load and display active flights
-    function loadActiveFlights() {
-        // TODO: Replace with actual API call
-        const mockFlights = [
-            {
-                id: '1',
-                flightNumber: '6E-123',
-                aircraft: 'A320',
-                departure: 'COK',
-                arrival: 'BOM',
-                status: 'Taxiing',
-                route: 'COK → BOM'
-            },
-            {
-                id: '2',
-                flightNumber: '6E-456',
-                aircraft: 'A330',
-                departure: 'DEL',
-                arrival: 'MAA',
-                status: 'Approaching',
-                route: 'DEL → MAA'
-            }
-        ];
+        socket.on('flight_status_updated', (flight) => {
+            updateFlightInList(flight);
+        });
 
+        socket.on('flight_delayed', (flight) => {
+            updateFlightInList(flight);
+            utils.showNotification(`Flight ${flight.flightNumber} delayed`, 'info');
+        });
+
+        socket.on('voice_channel_joined', (data) => {
+            updateVoiceChannelStatus(data);
+        });
+
+        socket.on('voice_channel_left', (data) => {
+            updateVoiceChannelStatus(data);
+        });
+    }
+
+    // Load active flights
+    async function loadActiveFlights() {
+        try {
+            const flights = await utils.fetchAPI(config.api.endpoints.atc.activeFlights);
+            displayActiveFlights(flights);
+        } catch (error) {
+            console.error('Error loading active flights:', error);
+            utils.showNotification('Failed to load active flights', 'error');
+        }
+    }
+
+    // Display active flights in the list
+    function displayActiveFlights(flights) {
         activeFlightsList.innerHTML = '';
-        mockFlights.forEach(flight => {
+        flights.forEach(flight => {
             const flightElement = createFlightElement(flight);
             activeFlightsList.appendChild(flightElement);
         });
     }
 
-    // Create flight element for the active flights list
+    // Create flight element
     function createFlightElement(flight) {
         const div = document.createElement('div');
-        div.className = 'p-4 border rounded-lg hover:bg-gray-50 cursor-pointer transition-colors duration-200';
+        div.className = 'bg-gray-50 p-4 rounded-md';
         div.innerHTML = `
             <div class="flex justify-between items-center">
                 <div>
-                    <h3 class="text-lg font-medium text-gray-900">${flight.flightNumber}</h3>
-                    <p class="text-sm text-gray-500">${flight.route}</p>
+                    <p class="text-lg font-semibold">${flight.flightNumber}</p>
+                    <p class="text-sm text-gray-500">${flight.departure} → ${flight.arrival}</p>
                 </div>
-                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                    getStatusColor(flight.status)
-                }">${flight.status}</span>
+                <span class="px-2 py-1 text-sm rounded-full ${
+                    flight.status === 'delayed' ? 'bg-red-100 text-red-800' :
+                    flight.status === 'boarding' ? 'bg-green-100 text-green-800' :
+                    'bg-blue-100 text-blue-800'
+                }">${utils.formatFlightStatus(flight.status)}</span>
             </div>
         `;
-        div.addEventListener('click', () => selectFlight(flight));
         return div;
     }
 
-    // Get status color class based on flight status
-    function getStatusColor(status) {
-        switch (status.toLowerCase()) {
-            case 'taxiing':
-                return 'bg-yellow-100 text-yellow-800';
-            case 'approaching':
-                return 'bg-blue-100 text-blue-800';
-            case 'departed':
-                return 'bg-green-100 text-green-800';
-            case 'delayed':
-                return 'bg-red-100 text-red-800';
-            default:
-                return 'bg-gray-100 text-gray-800';
-        }
-    }
-
-    // Select a flight and display its information
-    function selectFlight(flight) {
-        selectedFlight = flight;
-        selectedFlightInfo.classList.remove('hidden');
-
-        // Update flight information display
-        document.getElementById('flightNumber').textContent = flight.flightNumber;
-        document.getElementById('aircraft').textContent = flight.aircraft;
-        document.getElementById('route').textContent = flight.route;
-        document.getElementById('status').textContent = flight.status;
-    }
-
-    // Voice channel connection toggle
-    function toggleVoiceConnection() {
-        voiceConnected = !voiceConnected;
-        toggleVoiceBtn.textContent = voiceConnected ? 'Disconnect Voice' : 'Connect Voice';
-        toggleVoiceBtn.classList.toggle('bg-red-600');
-        toggleVoiceBtn.classList.toggle('bg-indigo-primary');
-
-        // TODO: Implement actual voice connection logic
-        utils.showNotification(
-            voiceConnected ? 'Connected to voice channel' : 'Disconnected from voice channel',
-            voiceConnected ? 'success' : 'info'
-        );
-    }
-
-    // Clearance functions
-    window.issueATCClearance = async () => {
-        if (!selectedFlight) {
-            utils.showNotification('Please select a flight first', 'error');
-            return;
-        }
-        await issueClearance('ATC', 'ATC clearance issued');
-    };
-
-    window.issueTakeoffClearance = async () => {
-        if (!selectedFlight) {
-            utils.showNotification('Please select a flight first', 'error');
-            return;
-        }
-        await issueClearance('Takeoff', 'Takeoff clearance issued');
-    };
-
-    window.issueLandingClearance = async () => {
-        if (!selectedFlight) {
-            utils.showNotification('Please select a flight first', 'error');
-            return;
-        }
-        await issueClearance('Landing', 'Landing clearance issued');
-    };
-
-    window.issueTaxiClearance = async () => {
-        if (!selectedFlight) {
-            utils.showNotification('Please select a flight first', 'error');
-            return;
-        }
-        await issueClearance('Taxi', 'Taxi clearance issued');
-    };
-
-    window.issuePushbackClearance = async () => {
-        if (!selectedFlight) {
-            utils.showNotification('Please select a flight first', 'error');
-            return;
-        }
-        await issueClearance('Pushback', 'Pushback clearance issued');
-    };
-
-    window.issueSelectedClearance = async () => {
-        if (!selectedFlight) {
-            utils.showNotification('Please select a flight first', 'error');
-            return;
-        }
-
-        const clearanceType = document.getElementById('otherClearances').value;
-        if (!clearanceType) {
-            utils.showNotification('Please select a clearance type', 'error');
-            return;
-        }
-
-        await issueClearance(
-            clearanceType.charAt(0).toUpperCase() + clearanceType.slice(1),
-            `${clearanceType.charAt(0).toUpperCase() + clearanceType.slice(1)} clearance issued`
-        );
-    };
-
-    // Issue flight delay
-    window.issueDelay = async () => {
-        if (!selectedFlight) {
-            utils.showNotification('Please select a flight first', 'error');
-            return;
-        }
-
-        const reason = document.getElementById('delayReason').value;
-        const duration = document.getElementById('delayDuration').value;
-
-        if (!reason || !duration) {
-            utils.showNotification('Please provide both reason and duration for the delay', 'error');
-            return;
-        }
-
+    // Load weather information
+    async function loadWeatherInfo() {
         try {
-            // TODO: Replace with actual API call
-            await simulateApiCall({
-                type: 'delay',
-                flightId: selectedFlight.id,
-                reason: reason,
-                duration: duration
-            });
-
-            utils.showNotification(`Flight delayed for ${duration} minutes due to ${reason}`, 'success');
-            
-            // Update flight status
-            selectedFlight.status = 'Delayed';
-            document.getElementById('status').textContent = 'Delayed';
-            loadActiveFlights(); // Refresh the flight list
+            const weather = await utils.fetchAPI(config.api.endpoints.atc.weather);
+            updateWeatherDisplay(weather);
         } catch (error) {
-            utils.showNotification('Failed to issue delay', 'error');
-        }
-    };
-
-    // Generic clearance issuing function
-    async function issueClearance(type, successMessage) {
-        try {
-            // TODO: Replace with actual API call
-            await simulateApiCall({
-                type: 'clearance',
-                clearanceType: type,
-                flightId: selectedFlight.id
-            });
-
-            utils.showNotification(successMessage, 'success');
-            
-            // Simulate message in Roblox chat
-            console.log(`[ROBLOX] ${selectedFlight.flightNumber} ${type} clearance: ${successMessage}`);
-        } catch (error) {
-            utils.showNotification(`Failed to issue ${type} clearance`, 'error');
+            console.error('Error loading weather:', error);
+            utils.showNotification('Failed to load weather information', 'error');
         }
     }
 
-    // Simulate API call with delay
-    function simulateApiCall(data) {
-        return new Promise((resolve, reject) => {
-            setTimeout(() => {
-                if (Math.random() > 0.1) { // 90% success rate
-                    console.log('API Call:', data);
-                    resolve(data);
-                } else {
-                    reject(new Error('API call failed'));
-                }
-            }, 500);
+    // Update weather display
+    function updateWeatherDisplay(weather) {
+        document.getElementById('windDirection').textContent = weather.windDirection;
+        document.getElementById('visibility').textContent = weather.visibility;
+        document.getElementById('cloudBase').textContent = weather.cloudBase;
+        document.getElementById('temperature').textContent = weather.temperature;
+    }
+
+    // Populate clearance types
+    function populateClearanceTypes() {
+        const clearanceTypeSelect = document.getElementById('clearanceType');
+        clearanceTypeSelect.innerHTML = '<option value="">Select clearance type</option>';
+        
+        config.clearanceTypes.forEach(type => {
+            const option = document.createElement('option');
+            option.value = type.toLowerCase().replace(/\s+/g, '_');
+            option.textContent = type;
+            clearanceTypeSelect.appendChild(option);
         });
     }
 
-    // Update weather information periodically
-    function updateWeather() {
-        // TODO: Replace with actual weather API call
-        const mockWeather = {
-            windDirection: `${Math.floor(Math.random() * 360)}° @ ${Math.floor(Math.random() * 30)}kts`,
-            visibility: `${Math.floor(Math.random() * 10 + 5)}km`,
-            cloudBase: `${Math.floor(Math.random() * 3000 + 1000)}ft`,
-            temperature: `${Math.floor(Math.random() * 20 + 15)}°C`
-        };
+    // Set up event listeners
+    function setupEventListeners() {
+        // Clearance form submission
+        clearanceForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            await issueClearance();
+        });
 
-        document.getElementById('windDirection').textContent = mockWeather.windDirection;
-        document.getElementById('visibility').textContent = mockWeather.visibility;
-        document.getElementById('cloudBase').textContent = mockWeather.cloudBase;
-        document.getElementById('temperature').textContent = mockWeather.temperature;
+        // Voice channel controls
+        joinVoiceBtn.addEventListener('click', toggleVoiceChannel);
+
+        // Refresh data periodically
+        setInterval(loadWeatherInfo, 60000); // Update weather every minute
+        setInterval(loadActiveFlights, 30000); // Update flights every 30 seconds
     }
 
-    // Initialize dashboard
-    loadActiveFlights();
-    updateWeather();
-    setInterval(updateWeather, 300000); // Update weather every 5 minutes
+    // Issue clearance
+    async function issueClearance() {
+        try {
+            const formData = new FormData(clearanceForm);
+            const clearance = {
+                flightId: formData.get('flightId'),
+                type: formData.get('clearanceType'),
+                remarks: formData.get('remarks'),
+                atcId: auth.userInfo.id
+            };
+
+            const response = await utils.fetchAPI(config.api.endpoints.atc.clearance, {
+                method: 'POST',
+                body: JSON.stringify(clearance)
+            });
+
+            utils.showNotification('Clearance issued successfully', 'success');
+            clearanceForm.reset();
+            addClearanceToLog(response);
+        } catch (error) {
+            console.error('Error issuing clearance:', error);
+            utils.showNotification('Failed to issue clearance', 'error');
+        }
+    }
+
+    // Add clearance to log
+    function addClearanceToLog(clearance) {
+        const logEntry = document.createElement('div');
+        logEntry.className = 'bg-gray-50 p-4 rounded-md';
+        logEntry.innerHTML = `
+            <p class="text-sm text-gray-500">${utils.formatDate(clearance.timestamp)}</p>
+            <p class="font-medium">${clearance.type}</p>
+            <p class="text-sm">${clearance.remarks || ''}</p>
+        `;
+        clearanceLog.insertBefore(logEntry, clearanceLog.firstChild);
+    }
+
+    // Toggle voice channel
+    async function toggleVoiceChannel() {
+        const frequency = document.getElementById('frequency').value;
+        const isJoining = joinVoiceBtn.textContent === 'Join Channel';
+
+        try {
+            const endpoint = isJoining ? 
+                config.api.endpoints.atc.voice.join :
+                config.api.endpoints.atc.voice.leave;
+
+            await utils.fetchAPI(endpoint, {
+                method: 'POST',
+                body: JSON.stringify({
+                    atcId: auth.userInfo.id,
+                    frequency
+                })
+            });
+
+            joinVoiceBtn.textContent = isJoining ? 'Leave Channel' : 'Join Channel';
+            joinVoiceBtn.classList.toggle('bg-green-600');
+            joinVoiceBtn.classList.toggle('bg-red-600');
+
+            utils.showNotification(
+                `Successfully ${isJoining ? 'joined' : 'left'} voice channel`,
+                'success'
+            );
+        } catch (error) {
+            console.error('Error toggling voice channel:', error);
+            utils.showNotification('Failed to toggle voice channel', 'error');
+        }
+    }
+
+    // Update flight in list
+    function updateFlightInList(updatedFlight) {
+        const existingFlight = activeFlightsList.querySelector(`[data-flight-id="${updatedFlight.id}"]`);
+        if (existingFlight) {
+            existingFlight.replaceWith(createFlightElement(updatedFlight));
+        } else {
+            activeFlightsList.appendChild(createFlightElement(updatedFlight));
+        }
+    }
+
+    // Update voice channel status
+    function updateVoiceChannelStatus(data) {
+        const frequency = document.getElementById('frequency');
+        if (data.frequency === frequency.value) {
+            joinVoiceBtn.textContent = data.userId === auth.userInfo.id ? 'Leave Channel' : 'Join Channel';
+            joinVoiceBtn.classList.toggle('bg-green-600', data.userId === auth.userInfo.id);
+            joinVoiceBtn.classList.toggle('bg-red-600', data.userId !== auth.userInfo.id);
+        }
+    }
+
+    // Initialize dashboard when auth state changes
+    auth.onAuthStateChanged = initDashboard;
+
+    // Initial dashboard setup
+    initDashboard();
 });
