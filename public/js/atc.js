@@ -155,14 +155,111 @@ document.addEventListener('DOMContentLoaded', () => {
         setInterval(loadActiveFlights, 30000); // Update flights every 30 seconds
     }
 
-    // Issue clearance
-    async function issueClearance() {
+    // Issue specific clearances
+    async function issueATCClearance() {
+        if (!selectedFlight) {
+            utils.showNotification('Please select a flight first', 'error');
+            return;
+        }
+        await issueClearance('atc', 'ATC clearance issued');
+    }
+
+    async function issueTakeoffClearance() {
+        if (!selectedFlight) {
+            utils.showNotification('Please select a flight first', 'error');
+            return;
+        }
+        await issueClearance('takeoff', 'Cleared for takeoff');
+    }
+
+    async function issueLandingClearance() {
+        if (!selectedFlight) {
+            utils.showNotification('Please select a flight first', 'error');
+            return;
+        }
+        await issueClearance('landing', 'Cleared to land');
+    }
+
+    async function issueTaxiClearance() {
+        if (!selectedFlight) {
+            utils.showNotification('Please select a flight first', 'error');
+            return;
+        }
+        await issueClearance('taxi', 'Cleared to taxi');
+    }
+
+    async function issuePushbackClearance() {
+        if (!selectedFlight) {
+            utils.showNotification('Please select a flight first', 'error');
+            return;
+        }
+        await issueClearance('pushback', 'Cleared for pushback');
+    }
+
+    async function issueSelectedClearance() {
+        if (!selectedFlight) {
+            utils.showNotification('Please select a flight first', 'error');
+            return;
+        }
+        
+        const clearanceType = document.getElementById('otherClearances').value;
+        if (!clearanceType) {
+            utils.showNotification('Please select a clearance type', 'error');
+            return;
+        }
+
+        const clearanceMessages = {
+            'climb': 'Cleared to climb',
+            'descent': 'Cleared to descend',
+            'approach': 'Cleared for approach',
+            'holding': 'Cleared for holding pattern',
+            'crossing': 'Cleared to cross'
+        };
+
+        await issueClearance(clearanceType, clearanceMessages[clearanceType]);
+    }
+
+    // Issue delay
+    async function issueDelay() {
+        if (!selectedFlight) {
+            utils.showNotification('Please select a flight first', 'error');
+            return;
+        }
+
+        const reason = document.getElementById('delayReason').value;
+        const duration = document.getElementById('delayDuration').value;
+
+        if (!reason || !duration) {
+            utils.showNotification('Please provide both reason and duration for delay', 'error');
+            return;
+        }
+
         try {
-            const formData = new FormData(clearanceForm);
+            const response = await utils.fetchAPI(config.api.endpoints.atc.delay, {
+                method: 'POST',
+                body: JSON.stringify({
+                    flightId: selectedFlight.id,
+                    reason: reason,
+                    duration: parseInt(duration),
+                    atcId: auth.userInfo.id
+                })
+            });
+
+            utils.showNotification(`Flight delayed for ${duration} minutes`, 'success');
+            updateFlightInList(response.flight);
+        } catch (error) {
+            console.error('Error issuing delay:', error);
+            utils.showNotification('Failed to issue delay', 'error');
+        }
+    }
+
+    // Generic clearance function
+    async function issueClearance(type, remarks = '') {
+        try {
             const clearance = {
-                flightId: formData.get('flightId'),
-                type: formData.get('clearanceType'),
-                remarks: formData.get('remarks'),
+                flightId: selectedFlight.id,
+                type: type,
+                remarks: remarks,
                 atcId: auth.userInfo.id
             };
 
@@ -172,12 +269,40 @@ document.addEventListener('DOMContentLoaded', () => {
             });
 
             utils.showNotification('Clearance issued successfully', 'success');
-            clearanceForm.reset();
             addClearanceToLog(response);
+            
+            // Update flight status if needed
+            if (response.flight) {
+                updateFlightInList(response.flight);
+            }
         } catch (error) {
             console.error('Error issuing clearance:', error);
             utils.showNotification('Failed to issue clearance', 'error');
         }
+    }
+
+    // Track selected flight
+    let selectedFlight = null;
+
+    // Handle flight selection
+    function selectFlight(flight) {
+        selectedFlight = flight;
+        
+        // Update UI to show selected flight
+        document.getElementById('selectedFlightInfo').classList.remove('hidden');
+        document.getElementById('flightNumber').textContent = flight.flightNumber;
+        document.getElementById('aircraft').textContent = flight.aircraft;
+        document.getElementById('route').textContent = `${flight.departure} → ${flight.arrival}`;
+        document.getElementById('status').textContent = utils.formatFlightStatus(flight.status);
+
+        // Highlight selected flight in list
+        const flightElements = activeFlightsList.querySelectorAll('[data-flight-id]');
+        flightElements.forEach(el => {
+            el.classList.remove('ring-2', 'ring-indigo-500');
+            if (el.dataset.flightId === flight.id) {
+                el.classList.add('ring-2', 'ring-indigo-500');
+            }
+        });
     }
 
     // Add clearance to log
