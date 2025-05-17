@@ -8,86 +8,138 @@ document.addEventListener('DOMContentLoaded', () => {
     const bookingSummary = document.getElementById('bookingSummary');
     const businessClassModal = document.getElementById('businessClassModal');
     
-    // Seat configuration
-    const seatConfig = {
-        A320: {
-            business: { rows: 2, seatsPerRow: 6 },
-            economy: { rows: 30, seatsPerRow: 6 }
-        },
-        A330: {
-            business: { rows: 3, seatsPerRow: 8 },
-            economy: { rows: 41, seatsPerRow: 8 }
-        }
-    };
-
     let selectedSeat = null;
 
     // Initialize seat maps
     function initializeSeatMaps() {
         createSeatMap('A320');
         createSeatMap('A330');
+        setupEventListeners();
     }
 
-    // Create seat map for specific aircraft
+    // Create seat map
     function createSeatMap(aircraftType) {
-        const config = seatConfig[aircraftType];
+        const aircraftConfig = config.aircraft[aircraftType];
         const map = document.getElementById(`${aircraftType.toLowerCase()}Map`);
-        
-        // Business Class
-        const businessContainer = map.querySelector('.grid-cols-6, .grid-cols-8');
-        createSeats(businessContainer, config.business, true);
+        map.innerHTML = '';
 
-        // Economy Class
-        const economyContainer = map.querySelectorAll('.grid-cols-6, .grid-cols-8')[1];
-        createSeats(economyContainer, config.economy, false);
-    }
+        const seatMapContainer = document.createElement('div');
+        seatMapContainer.className = 'relative max-w-3xl mx-auto';
 
-    // Create seats for a section
-    function createSeats(container, config, isBusiness) {
-        container.innerHTML = '';
-        const letters = isBusiness ? 
-            (config.seatsPerRow === 6 ? ['A', 'B', 'C', 'D', 'E', 'F'] : ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']) :
-            (config.seatsPerRow === 6 ? ['A', 'B', 'C', 'D', 'E', 'F'] : ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']);
+        // Create aircraft outline
+        const aircraftOutline = document.createElement('div');
+        aircraftOutline.className = 'relative bg-gray-100 rounded-3xl p-8';
 
-        for (let row = 1; row <= config.rows; row++) {
-            const rowNum = isBusiness ? row : row + (aircraftType === 'A320' ? 2 : 3);
+        // Create rows
+        for (let row = 1; row <= aircraftConfig.seatMap.totalRows; row++) {
+            const rowElement = document.createElement('div');
+            rowElement.className = 'flex justify-center items-center mb-2 relative';
+
+            // Add row number
+            const rowNumber = document.createElement('div');
+            rowNumber.className = 'absolute -left-8 text-sm text-gray-500';
+            rowNumber.textContent = row;
+            rowElement.appendChild(rowNumber);
+
+            // Create seats in the row
+            const letters = aircraftConfig.seatMap.seatsPerRow === 6 ? 
+                ['A', 'B', 'C', 'D', 'E', 'F'] : 
+                ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
             
             letters.forEach((letter, index) => {
-                if (config.seatsPerRow === 8 && index === 4) {
-                    // Add aisle spacing for A330
+                // Add aisle spacing
+                if ((aircraftConfig.seatMap.seatsPerRow === 6 && index === 3) || 
+                    (aircraftConfig.seatMap.seatsPerRow === 8 && index === 4)) {
                     const aisle = document.createElement('div');
-                    container.appendChild(aisle);
+                    aisle.className = 'w-8';
+                    rowElement.appendChild(aisle);
                 }
-                
+
                 const seat = document.createElement('button');
-                seat.className = `w-8 h-8 rounded ${isBusiness ? 'bg-yellow-500' : 'bg-gray-200'} hover:opacity-75 focus:outline-none transition-colors duration-200`;
-                seat.setAttribute('data-seat', `${rowNum}${letter}`);
-                seat.setAttribute('data-class', isBusiness ? 'business' : 'economy');
-                seat.innerHTML = `${rowNum}${letter}`;
-                
+                const seatNumber = `${row}${letter}`;
+                const isBusinessClass = aircraftConfig.seatMap.businessClassRows.includes(row);
+                const isExitRow = aircraftConfig.seatMap.exitRows.includes(row);
+
+                seat.className = `
+                    w-8 h-8 m-1 rounded-t-lg relative
+                    ${isBusinessClass ? 'bg-yellow-500' : 'bg-gray-200'} 
+                    ${isExitRow ? 'mt-6' : ''} 
+                    hover:opacity-75 focus:outline-none transition-colors duration-200
+                `;
+                seat.setAttribute('data-seat', seatNumber);
+                seat.setAttribute('data-class', isBusinessClass ? 'business' : 'economy');
+
+                // Add seat tooltip
+                const tooltip = document.createElement('div');
+                tooltip.className = 'absolute bottom-full left-1/2 transform -translate-x-1/2 mb-1 px-2 py-1 text-xs text-white bg-gray-800 rounded opacity-0 transition-opacity duration-200';
+                tooltip.textContent = seatNumber;
+                seat.appendChild(tooltip);
+
+                // Show/hide tooltip on hover
+                seat.addEventListener('mouseenter', () => tooltip.classList.add('opacity-100'));
+                seat.addEventListener('mouseleave', () => tooltip.classList.remove('opacity-100'));
+
                 seat.addEventListener('click', () => handleSeatSelection(seat));
-                container.appendChild(seat);
-                
-                if (config.seatsPerRow === 6 && index === 2) {
-                    // Add aisle spacing for A320
-                    const aisle = document.createElement('div');
-                    container.appendChild(aisle);
-                }
+                rowElement.appendChild(seat);
             });
+
+            // Add exit row markers
+            if (aircraftConfig.seatMap.exitRows.includes(row)) {
+                const exitMarker = document.createElement('div');
+                exitMarker.className = 'absolute -left-16 text-xs text-red-500 font-medium';
+                exitMarker.textContent = 'EXIT';
+                rowElement.appendChild(exitMarker);
+
+                const exitMarkerRight = document.createElement('div');
+                exitMarkerRight.className = 'absolute -right-16 text-xs text-red-500 font-medium';
+                exitMarkerRight.textContent = 'EXIT';
+                rowElement.appendChild(exitMarkerRight);
+            }
+
+            aircraftOutline.appendChild(rowElement);
         }
+
+        // Add aircraft nose and tail
+        const nose = document.createElement('div');
+        nose.className = 'absolute -top-8 left-1/2 transform -translate-x-1/2 w-32 h-8 bg-gray-100 rounded-t-full';
+        seatMapContainer.appendChild(nose);
+
+        const tail = document.createElement('div');
+        tail.className = 'absolute -bottom-8 left-1/2 transform -translate-x-1/2 w-16 h-8 bg-gray-100 rounded-b-lg';
+        seatMapContainer.appendChild(tail);
+
+        seatMapContainer.appendChild(aircraftOutline);
+        map.appendChild(seatMapContainer);
+
+        // Add legend
+        const legend = document.createElement('div');
+        legend.className = 'mt-8 flex justify-center space-x-6';
+        legend.innerHTML = `
+            <div class="flex items-center">
+                <div class="w-4 h-4 bg-yellow-500 rounded mr-2"></div>
+                <span class="text-sm text-gray-600">Business Class (Gamepass Required)</span>
+            </div>
+            <div class="flex items-center">
+                <div class="w-4 h-4 bg-gray-200 rounded mr-2"></div>
+                <span class="text-sm text-gray-600">Economy Class</span>
+            </div>
+            <div class="flex items-center">
+                <div class="w-4 h-4 bg-gray-400 rounded mr-2"></div>
+                <span class="text-sm text-gray-600">Occupied</span>
+            </div>
+        `;
+        map.appendChild(legend);
     }
 
     // Handle seat selection
     async function handleSeatSelection(seatElement) {
-        const seatClass = seatElement.getAttribute('data-class');
-        const seatNumber = seatElement.getAttribute('data-seat');
-
-        // Check if user is authenticated
         if (!auth.isAuthenticated) {
             utils.showNotification('Please login to select a seat', 'error');
             return;
         }
 
+        const seatClass = seatElement.getAttribute('data-class');
+        
         // Check business class access
         if (seatClass === 'business') {
             const hasAccess = await checkBusinessClassAccess();
@@ -112,9 +164,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Check if user has business class access
     async function checkBusinessClassAccess() {
-        // TODO: Implement actual gamepass check
-        // For now, return false to simulate no access
-        return false;
+        try {
+            const response = await utils.fetchAPI(config.api.endpoints.auth.checkGamepass);
+            return response.hasAccess;
+        } catch (error) {
+            console.error('Error checking gamepass:', error);
+            return false;
+        }
     }
 
     // Update booking summary
@@ -135,54 +191,58 @@ document.addEventListener('DOMContentLoaded', () => {
         bookingSummary.classList.remove('hidden');
     }
 
-    // Handle aircraft selection change
-    aircraftSelect.addEventListener('change', () => {
-        const aircraft = aircraftSelect.value;
-        seatMapContainer.classList.remove('hidden');
-        a320Map.classList.add('hidden');
-        a330Map.classList.add('hidden');
+    // Set up event listeners
+    function setupEventListeners() {
+        // Handle aircraft selection change
+        aircraftSelect.addEventListener('change', () => {
+            const aircraft = aircraftSelect.value;
+            seatMapContainer.classList.remove('hidden');
+            a320Map.classList.add('hidden');
+            a330Map.classList.add('hidden');
 
-        if (aircraft === 'A320') {
-            a320Map.classList.remove('hidden');
-        } else if (aircraft === 'A330') {
-            a330Map.classList.remove('hidden');
-        }
+            if (aircraft === 'A320') {
+                a320Map.classList.remove('hidden');
+            } else if (aircraft === 'A330') {
+                a330Map.classList.remove('hidden');
+            }
 
-        selectedSeat = null;
-        bookingSummary.classList.add('hidden');
-    });
-
-    // Handle booking confirmation
-    document.getElementById('confirmBooking').addEventListener('click', async () => {
-        if (!auth.isAuthenticated) {
-            utils.showNotification('Please login to confirm booking', 'error');
-            return;
-        }
-
-        if (!selectedSeat) {
-            utils.showNotification('Please select a seat', 'error');
-            return;
-        }
-
-        try {
-            // TODO: Implement actual booking API call
-            await simulateBooking();
-            utils.showNotification('Booking confirmed! Use /retrieve in game to get your ticket.', 'success');
-            
-            // Reset selection
-            selectedSeat.classList.remove('bg-indigo-primary', 'text-white');
-            selectedSeat.classList.add('bg-gray-400'); // Mark as occupied
             selectedSeat = null;
             bookingSummary.classList.add('hidden');
-        } catch (error) {
-            utils.showNotification('Failed to confirm booking. Please try again.', 'error');
-        }
-    });
+        });
 
-    // Simulate booking process
-    function simulateBooking() {
-        return new Promise((resolve) => {
-            setTimeout(resolve, 1000);
+        // Handle booking confirmation
+        document.getElementById('confirmBooking').addEventListener('click', async () => {
+            if (!auth.isAuthenticated) {
+                utils.showNotification('Please login to confirm booking', 'error');
+                return;
+            }
+
+            if (!selectedSeat) {
+                utils.showNotification('Please select a seat', 'error');
+                return;
+            }
+
+            try {
+                const response = await utils.fetchAPI(config.api.endpoints.booking.create, {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        flightId: document.getElementById('flightId').value,
+                        seatNumber: selectedSeat.getAttribute('data-seat'),
+                        seatClass: selectedSeat.getAttribute('data-class')
+                    })
+                });
+
+                utils.showNotification('Booking confirmed! Use /retrieve in game to get your ticket.', 'success');
+                
+                // Mark seat as occupied
+                selectedSeat.classList.remove('bg-indigo-primary', 'text-white');
+                selectedSeat.classList.add('bg-gray-400');
+                selectedSeat = null;
+                bookingSummary.classList.add('hidden');
+            } catch (error) {
+                console.error('Error confirming booking:', error);
+                utils.showNotification('Failed to confirm booking. Please try again.', 'error');
+            }
         });
     }
 
