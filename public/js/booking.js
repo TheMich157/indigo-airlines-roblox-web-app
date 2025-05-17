@@ -10,11 +10,77 @@ document.addEventListener('DOMContentLoaded', () => {
     
     let selectedSeat = null;
 
-    // Initialize seat maps
-    function initializeSeatMaps() {
-        createSeatMap('A320');
-        createSeatMap('A330');
+    // Initialize booking system
+    async function initializeBooking() {
+        await loadAvailableFlights();
         setupEventListeners();
+    }
+
+    // Load available flights
+    async function loadAvailableFlights() {
+        try {
+            const response = await fetch('/api/flights/available');
+            const flights = await response.json();
+            displayAvailableFlights(flights);
+        } catch (error) {
+            console.error('Error loading flights:', error);
+            utils.showNotification('Failed to load available flights', 'error');
+        }
+    }
+
+    // Display available flights
+    function displayAvailableFlights(flights) {
+        const container = document.getElementById('availableFlights');
+        container.innerHTML = '';
+
+        flights.forEach(flight => {
+            const flightCard = document.createElement('div');
+            flightCard.className = 'bg-white border rounded-lg shadow-sm hover:shadow-md transition-shadow duration-200';
+            flightCard.innerHTML = `
+                <div class="p-6">
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <h3 class="text-lg font-semibold text-gray-900">${flight.flightNumber}</h3>
+                            <p class="text-sm text-gray-500">${flight.aircraft}</p>
+                        </div>
+                        <div class="text-right">
+                            <p class="text-lg font-semibold text-gray-900">₹${flight.price.economy}</p>
+                            <p class="text-sm text-gray-500">Economy</p>
+                        </div>
+                    </div>
+                    <div class="mt-4 flex justify-between items-center">
+                        <div class="flex items-center space-x-4">
+                            <div>
+                                <p class="text-sm font-medium text-gray-900">${flight.departure}</p>
+                                <p class="text-sm text-gray-500">${utils.formatTime(flight.departureTime)}</p>
+                            </div>
+                            <div class="flex-shrink-0">
+                                <svg class="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3"></path>
+                                </svg>
+                            </div>
+                            <div>
+                                <p class="text-sm font-medium text-gray-900">${flight.arrival}</p>
+                                <p class="text-sm text-gray-500">${utils.formatTime(flight.arrivalTime)}</p>
+                            </div>
+                        </div>
+                        <button onclick="selectFlight('${flight.id}')" class="bg-indigo-primary text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-indigo-secondary focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-primary">
+                            Select Flight
+                        </button>
+                    </div>
+                    <div class="mt-4 flex items-center space-x-4">
+                        <span class="text-sm text-gray-500">Available seats:</span>
+                        <span class="text-sm font-medium bg-green-100 text-green-800 px-2 py-1 rounded-full">
+                            ${flight.seats.available.economy} Economy
+                        </span>
+                        <span class="text-sm font-medium bg-yellow-100 text-yellow-800 px-2 py-1 rounded-full">
+                            ${flight.seats.available.business} Business
+                        </span>
+                    </div>
+                </div>
+            `;
+            container.appendChild(flightCard);
+        });
     }
 
     // Create seat map
@@ -351,24 +417,58 @@ document.addEventListener('DOMContentLoaded', () => {
         bookingSummary.classList.remove('hidden');
     }
 
+    // State management
+    let selectedFlight = null;
+
+    // Select flight
+    window.selectFlight = async function(flightId) {
+        try {
+            const response = await fetch('/api/flights/available');
+            const flights = await response.json();
+            selectedFlight = flights.find(f => f.id === flightId);
+            
+            if (selectedFlight) {
+                // Show flight details
+                document.getElementById('availableFlights').parentElement.classList.add('hidden');
+                document.getElementById('selectedFlightDetails').classList.remove('hidden');
+                
+                // Update flight details
+                document.getElementById('flightNumberDetail').textContent = selectedFlight.flightNumber;
+                document.getElementById('routeDetail').textContent = `${selectedFlight.departure} → ${selectedFlight.arrival}`;
+                document.getElementById('aircraftDetail').textContent = selectedFlight.aircraft;
+                document.getElementById('departureDetail').textContent = utils.formatDateTime(selectedFlight.departureTime);
+                document.getElementById('arrivalDetail').textContent = utils.formatDateTime(selectedFlight.arrivalTime);
+                document.getElementById('economySeats').textContent = `${selectedFlight.seats.available.economy} Economy`;
+                document.getElementById('businessSeats').textContent = `${selectedFlight.seats.available.business} Business`;
+
+                // Show seat map
+                document.getElementById('seatMapContainer').classList.remove('hidden');
+                document.getElementById('a320Map').classList.add('hidden');
+                document.getElementById('a330Map').classList.add('hidden');
+                document.getElementById(`${selectedFlight.aircraft.toLowerCase()}Map`).classList.remove('hidden');
+
+                // Initialize seat map
+                createSeatMap(selectedFlight.aircraft);
+                initializeSeatMap(selectedFlight);
+            }
+        } catch (error) {
+            console.error('Error selecting flight:', error);
+            utils.showNotification('Failed to select flight', 'error');
+        }
+    };
+
+    // Back to flights
+    window.backToFlights = function() {
+        document.getElementById('availableFlights').parentElement.classList.remove('hidden');
+        document.getElementById('selectedFlightDetails').classList.add('hidden');
+        document.getElementById('seatMapContainer').classList.add('hidden');
+        document.getElementById('bookingSummary').classList.add('hidden');
+        selectedFlight = null;
+        selectedSeat = null;
+    };
+
     // Set up event listeners
     function setupEventListeners() {
-        // Handle aircraft selection change
-        aircraftSelect.addEventListener('change', () => {
-            const aircraft = aircraftSelect.value;
-            seatMapContainer.classList.remove('hidden');
-            a320Map.classList.add('hidden');
-            a330Map.classList.add('hidden');
-
-            if (aircraft === 'A320') {
-                a320Map.classList.remove('hidden');
-            } else if (aircraft === 'A330') {
-                a330Map.classList.remove('hidden');
-            }
-
-            selectedSeat = null;
-            bookingSummary.classList.add('hidden');
-        });
 
         // Handle booking confirmation
         document.getElementById('confirmBooking').addEventListener('click', async () => {
@@ -406,6 +506,41 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Initialize seat maps
-    initializeSeatMaps();
+    // Initialize seat map for selected flight
+    function initializeSeatMap(flight) {
+        const map = document.getElementById(`${flight.aircraft.toLowerCase()}Map`);
+        const seats = map.querySelectorAll('[data-seat]');
+
+        seats.forEach(seat => {
+            // Reset seat status
+            seat.className = `w-8 h-8 m-1 rounded-t-lg relative ${
+                seat.dataset.class === 'business' ? 'bg-yellow-500' : 'bg-gray-200'
+            }`;
+
+            // Mark occupied seats
+            if (flight.seats.occupied.includes(seat.dataset.seat)) {
+                seat.className = 'w-8 h-8 m-1 rounded-t-lg relative bg-gray-400';
+                seat.disabled = true;
+            }
+
+            // Add click handler
+            seat.onclick = () => handleSeatSelection(seat);
+        });
+    }
+
+    // Update booking summary
+    function updateBookingSummary() {
+        if (!selectedFlight || !selectedSeat) return;
+
+        document.getElementById('summaryFlight').textContent = `${selectedFlight.flightNumber} (${selectedFlight.departure} → ${selectedFlight.arrival})`;
+        document.getElementById('summaryDate').textContent = utils.formatDateTime(selectedFlight.departureTime);
+        document.getElementById('summarySeat').textContent = selectedSeat.dataset.seat;
+        document.getElementById('summaryClass').textContent = selectedSeat.dataset.class === 'business' ? 'Business' : 'Economy';
+        document.getElementById('summaryPrice').textContent = `₹${selectedSeat.dataset.class === 'business' ? selectedFlight.price.business : selectedFlight.price.economy}`;
+
+        document.getElementById('bookingSummary').classList.remove('hidden');
+    }
+
+    // Initialize booking system
+    initializeBooking();
 });
