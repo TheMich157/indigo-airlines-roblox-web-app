@@ -1,5 +1,81 @@
 // Common functionality and utilities
 document.addEventListener('DOMContentLoaded', () => {
+    // Constants for links
+    const DISCORD_LINK = '<discordlink>';
+    const ROBLOX_LINK = '<robloxlink>';
+
+    // Set up Discord links
+    const discordLinks = [
+        document.getElementById('discordLink'),
+        document.getElementById('footerDiscordLink')
+    ];
+    
+    discordLinks.forEach(link => {
+        if (link) {
+            link.href = DISCORD_LINK;
+            link.target = '_blank';
+            link.rel = 'noopener noreferrer';
+        }
+    });
+
+    // Set up Roblox links
+    const robloxLinks = [
+        document.getElementById('robloxLink'),
+        document.getElementById('footerRobloxLink')
+    ];
+    
+    robloxLinks.forEach(link => {
+        if (link) {
+            link.href = ROBLOX_LINK;
+            link.target = '_blank';
+            link.rel = 'noopener noreferrer';
+        }
+    });
+
+    // Handle authentication status updates
+    const loginBtn = document.getElementById('loginBtn');
+    if (loginBtn) {
+        // Check if user is already authenticated
+        if (window.auth && auth.isAuthenticated) {
+            updateLoginButton(true);
+        }
+
+        loginBtn.addEventListener('click', async () => {
+            try {
+                if (!window.auth) {
+                    console.error('Auth module not loaded');
+                    return;
+                }
+
+                if (auth.isAuthenticated) {
+                    await auth.logout();
+                    updateLoginButton(false);
+                } else {
+                    await auth.login();
+                    updateLoginButton(true);
+                }
+            } catch (error) {
+                console.error('Authentication error:', error);
+                utils.showNotification('Authentication failed. Please try again.', 'error');
+            }
+        });
+    }
+
+    // Update login button text and style based on auth status
+    function updateLoginButton(isAuthenticated) {
+        if (!loginBtn) return;
+        
+        if (isAuthenticated) {
+            loginBtn.textContent = 'Logout';
+            loginBtn.classList.add('bg-gray-500');
+            loginBtn.classList.remove('bg-indigo-primary');
+        } else {
+            loginBtn.textContent = 'Login with Roblox';
+            loginBtn.classList.add('bg-indigo-primary');
+            loginBtn.classList.remove('bg-gray-500');
+        }
+    }
+
     // Initialize smooth scrolling for anchor links
     document.querySelectorAll('a[href^="#"]').forEach(anchor => {
         anchor.addEventListener('click', function (e) {
