@@ -1,9 +1,9 @@
 // Roblox Authentication Module
 const RobloxAuth = {
     // Constants
-    ROBLOX_OAUTH_URL: 'https://auth.roblox.com/v2/login',
-    GAME_ID: '87654321', // Replace with actual game ID
-    GROUP_ID: '12345678', // Replace with actual group ID
+    MOCK_AUTH_URL: '/api/mock-auth',
+    CLIENT_ID: 'mock_client_id',
+    REDIRECT_URI: 'http://localhost:8000/auth/callback',
 
     // Initialize Roblox auth
     init() {
@@ -18,33 +18,40 @@ const RobloxAuth = {
     },
 
     // Start login process
-    startLogin() {
-        // Open Roblox login popup
-        const width = 500;
-        const height = 600;
-        const left = (window.screen.width - width) / 2;
-        const top = (window.screen.height - height) / 2;
+    async startLogin() {
+        try {
+            // Generate state for CSRF protection
+            const state = this.generateState();
+            sessionStorage.setItem('auth_state', state);
 
-        const params = new URLSearchParams({
-            clientId: this.GAME_ID,
-            redirectUri: window.location.origin + '/auth/callback',
-            responseType: 'code',
-            scope: 'openid profile',
-            state: this.generateState(),
-            nonce: this.generateNonce()
-        });
+            // Make request to mock auth endpoint
+            const response = await fetch(this.MOCK_AUTH_URL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    client_id: this.CLIENT_ID,
+                    redirect_uri: this.REDIRECT_URI,
+                    response_type: 'code',
+                    scope: 'openid profile',
+                    state: state,
+                    nonce: this.generateNonce()
+                })
+            });
 
-        const loginUrl = `${this.ROBLOX_OAUTH_URL}?${params.toString()}`;
+            if (!response.ok) {
+                throw new Error('Failed to start auth process');
+            }
 
-        this.loginWindow = window.open(
-            loginUrl,
-            'RobloxLogin',
-            `width=${width},height=${height},left=${left},top=${top}`
-        );
-
-        // Store state for verification
-        sessionStorage.setItem('auth_state', params.get('state'));
-        sessionStorage.setItem('auth_nonce', params.get('nonce'));
+            const data = await response.json();
+            if (data.success) {
+                utils.showNotification('Login successful', 'success');
+            }
+        } catch (error) {
+            console.error('Error starting login:', error);
+            utils.showNotification('Failed to start login process', 'error');
+        }
     },
 
     // Handle messages from Roblox
