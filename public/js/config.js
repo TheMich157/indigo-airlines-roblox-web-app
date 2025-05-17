@@ -241,9 +241,169 @@ const config = {
     // Date format
     dateFormat: 'DD/MM/YYYY HH:mm',
 
-    // Maximum concurrent flights per pilot
-    maxConcurrentFlights: 1,
+    // Flight operations
+    flightOps: {
+        maxConcurrentFlights: 1,
+        minTurnaroundTime: 30,
+        maxFlightTime: 480, // 8 hours in minutes
+        minGroundTime: 20,
+        maxGroundTime: 180,
+        fuelReserve: 45, // minutes
+        standardClimb: 2000, // feet per minute
+        standardDescent: 1500, // feet per minute
+        taxiSpeed: 15, // knots
+        pushbackSpeed: 5, // knots
+        contingencyFuel: 0.05 // 5% of trip fuel
+    },
 
-    // Minimum turnaround time (in minutes)
-    minTurnaroundTime: 30
+    // Performance parameters
+    performance: {
+        A320: {
+            cruiseSpeed: 450, // knots
+            maxAltitude: 39000, // feet
+            fuelFlow: 2400, // kg/hour
+            maxRange: 3300, // nautical miles
+            takeoffDistance: 2190, // meters
+            landingDistance: 1440, // meters
+            maxTakeoffWeight: 78000, // kg
+            maxLandingWeight: 66000, // kg
+            maxFuel: 24210, // kg
+            minRunway: 1800 // meters
+        },
+        A330: {
+            cruiseSpeed: 470,
+            maxAltitude: 41000,
+            fuelFlow: 5600,
+            maxRange: 6350,
+            takeoffDistance: 2500,
+            landingDistance: 1730,
+            maxTakeoffWeight: 242000,
+            maxLandingWeight: 182000,
+            maxFuel: 139090,
+            minRunway: 2500
+        }
+    },
+
+    // Weather minimums
+    weatherMinimums: {
+        takeoff: {
+            visibility: 550, // meters
+            ceiling: 200, // feet
+            crosswind: 25, // knots
+            tailwind: 10 // knots
+        },
+        landing: {
+            visibility: 750,
+            ceiling: 300,
+            crosswind: 20,
+            tailwind: 5
+        },
+        alternate: {
+            visibility: 1500,
+            ceiling: 600
+        }
+    },
+
+    // Rank requirements
+    rankRequirements: {
+        'Trainee First Officer': {
+            mileageRequired: 0,
+            requiredHours: 0,
+            allowedAircraft: ['A320'],
+            supervisedFlights: true,
+            routeRestrictions: ['domestic']
+        },
+        'First Officer': {
+            mileageRequired: 5000,
+            requiredHours: 50,
+            allowedAircraft: ['A320'],
+            supervisedFlights: false,
+            routeRestrictions: ['domestic']
+        },
+        'Senior First Officer': {
+            mileageRequired: 15000,
+            requiredHours: 150,
+            allowedAircraft: ['A320', 'A330'],
+            supervisedFlights: false,
+            routeRestrictions: []
+        },
+        'Captain': {
+            mileageRequired: 30000,
+            requiredHours: 300,
+            allowedAircraft: ['A320', 'A330'],
+            supervisedFlights: false,
+            routeRestrictions: [],
+            canTrainOthers: true
+        },
+        'Senior Captain': {
+            mileageRequired: 50000,
+            requiredHours: 500,
+            allowedAircraft: ['A320', 'A330'],
+            supervisedFlights: false,
+            routeRestrictions: [],
+            canTrainOthers: true,
+            canAssessOthers: true
+        },
+        'Fleet Captain': {
+            mileageRequired: 100000,
+            requiredHours: 1000,
+            allowedAircraft: ['A320', 'A330'],
+            supervisedFlights: false,
+            routeRestrictions: [],
+            canTrainOthers: true,
+            canAssessOthers: true,
+            canManageFleet: true
+        }
+    },
+
+    // Booking rules
+    bookingRules: {
+        maxAdvanceBooking: 30, // days
+        minCheckInTime: 45, // minutes before departure
+        maxCheckInTime: 180, // minutes before departure
+        cancellationDeadline: 24, // hours before departure
+        maxPassengers: 8, // per booking
+        seatChangeDeadline: 2, // hours before departure
+        noShowPenalty: 48, // hours ban
+        frequentChangePenalty: 24 // hours ban after 3 changes
+    },
+
+    // System settings
+    system: {
+        sessionTimeout: 120, // minutes
+        maxLoginAttempts: 5,
+        lockoutDuration: 15, // minutes
+        passwordExpiry: 90, // days
+        mfaGracePeriod: 7, // days
+        apiRateLimit: 100, // requests per minute
+        maxFileSize: 5242880, // 5MB in bytes
+        allowedFileTypes: ['jpg', 'png', 'pdf'],
+        backupInterval: 86400, // 24 hours in seconds
+        maintenanceWindow: {
+            start: '02:00',
+            duration: 120 // minutes
+        }
+    },
+
+    // Error messages
+    errorMessages: {
+        auth: {
+            invalidCredentials: 'Invalid username or password',
+            sessionExpired: 'Your session has expired. Please log in again',
+            insufficientPermissions: 'You do not have permission to perform this action',
+            mfaRequired: 'Multi-factor authentication is required'
+        },
+        booking: {
+            seatUnavailable: 'Selected seat is no longer available',
+            flightFull: 'This flight is fully booked',
+            duplicateBooking: 'You already have a booking on this flight',
+            pastDeparture: 'Cannot book a flight that has already departed'
+        },
+        flight: {
+            invalidRoute: 'Invalid route selected',
+            crewUnavailable: 'Required crew is not available',
+            aircraftUnavailable: 'Selected aircraft is not available',
+            weatherRestriction: 'Current weather conditions do not meet minimum requirements'
+        }
+    }
 };
