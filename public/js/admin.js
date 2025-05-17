@@ -280,10 +280,32 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Create new flight
+    // Create new flight with validation
     async function createFlight() {
         try {
             const formData = new FormData(createFlightForm);
+            
+            // Validate form data
+            const validationErrors = validateFlightData(formData);
+            if (validationErrors.length > 0) {
+                utils.showNotification(validationErrors[0], 'error');
+                return;
+            }
+
+            // Check for schedule conflicts
+            const hasConflicts = await checkScheduleConflicts(formData);
+            if (hasConflicts) {
+                utils.showNotification('Schedule conflict detected', 'error');
+                return;
+            }
+
+            // Check crew availability
+            const crewAvailable = await checkCrewAvailability(formData);
+            if (!crewAvailable) {
+                utils.showNotification('Selected crew members are not available', 'error');
+                return;
+            }
+
             const flightData = {
                 flightNumber: `6E${formData.get('flightNumber')}`,
                 departure: formData.get('departure'),
@@ -291,20 +313,167 @@ document.addEventListener('DOMContentLoaded', () => {
                 departureTime: formData.get('departureTime'),
                 aircraft: formData.get('aircraft'),
                 pilot: formData.get('assignPilot') || null,
-                firstOfficer: formData.get('assignFirstOfficer') || null
+                firstOfficer: formData.get('assignFirstOfficer') || null,
+                estimatedDuration: calculateFlightDuration(
+                    formData.get('departure'),
+                    formData.get('arrival'),
+                    formData.get('aircraft')
+                ),
+                turnaroundTime: config.minTurnaroundTime
             };
+
+            // Add route planning
+            const routePlan = await generateRoutePlan(
+                flightData.departure,
+                flightData.arrival,
+                flightData.aircraft
+            );
+            flightData.routePlan = routePlan;
 
             const response = await utils.fetchAPI('/api/flights/create', {
                 method: 'POST',
                 body: JSON.stringify(flightData)
             });
 
+            // Update system stats
+            await loadSystemStats();
+
+            // Add to system logs
+            addSystemLog({
+                type: 'FLIGHT_CREATED',
+                message: `Flight ${flightData.flightNumber} created`,
+                user: auth.userInfo.username,
+                timestamp: new Date()
+            });
+
             utils.showNotification('Flight created successfully', 'success');
             createFlightForm.reset();
             updateFlightSchedule(response);
+
+            // Notify assigned crew
+            if (flightData.pilot || flightData.firstOfficer) {
+                await notifyCrewAssignment(flightData);
+            }
+
         } catch (error) {
             console.error('Error creating flight:', error);
             utils.showNotification('Failed to create flight', 'error');
+        }
+    }
+
+    // Validate flight data
+    function validateFlightData(formData) {
+        const errors = [];
+        
+        // Flight number validation
+        const flightNum = formData.get('flightNumber');
+        if (!flightNum || !/^\d{3}$/.test(flightNum)) {
+            errors.push('Flight number must be 3 digits');
+        }
+
+        // Airport validation
+        const departure = formData.get('departure');
+        const arrival = formData.get('arrival');
+        if (!departure || !arrival) {
+            errors.push('Both departure and arrival airports are required');
+        }
+        if (departure === arrival) {
+            errors.push('Departure and arrival airports cannot be the same');
+        }
+
+        // Time validation
+        const departureTime = new Date(formData.get('departureTime'));
+        if (isNaN(departureTime.getTime())) {
+            errors.push('Invalid departure time');
+        }
+        if (departureTime < new Date()) {
+            errors.push('Departure time cannot be in the past');
+        }
+
+        // Aircraft validation
+        if (!formData.get('aircraft')) {
+            errors.push('Aircraft type is required');
+        }
+
+        // Crew validation
+        const pilot = formData.get('assignPilot');
+        const firstOfficer = formData.get('assignFirstOfficer');
+        if (pilot && firstOfficer && pilot === firstOfficer) {
+            errors.push('Pilot and First Officer cannot be the same person');
+        }
+
+        return errors;
+    }
+
+    // Check for schedule conflicts
+    async function checkScheduleConflicts(formData) {
+        try {
+            const response = await utils.fetchAPI('/api/admin/check-conflicts', {
+                method: 'POST',
+                body: JSON.stringify({
+                    departureTime: formData.get('departureTime'),
+                    departure: formData.get('departure'),
+                    arrival: formData.get('arrival'),
+                    aircraft: formData.get('aircraft')
+                })
+            });
+            return response.hasConflicts;
+        } catch (error) {
+            console.error('Error checking schedule conflicts:', error);
+            return true;
+        }
+    }
+
+    // Check crew availability
+    async function checkCrewAvailability(formData) {
+        try {
+            const response = await utils.fetchAPI('/api/admin/check-crew', {
+                method: 'POST',
+                body: JSON.stringify({
+                    departureTime: formData.get('departureTime'),
+                    pilot: formData.get('assignPilot'),
+                    firstOfficer: formData.get('assignFirstOfficer')
+                })
+            });
+            return response.available;
+        } catch (error) {
+            console.error('Error checking crew availability:', error);
+            return false;
+        }
+    }
+
+    // Generate route plan
+    async function generateRoutePlan(departure, arrival, aircraft) {
+        try {
+            const response = await utils.fetchAPI('/api/admin/generate-route', {
+                method: 'POST',
+                body: JSON.stringify({
+                    departure,
+                    arrival,
+                    aircraft
+                })
+            });
+            return response.routePlan;
+        } catch (error) {
+            console.error('Error generating route plan:', error);
+            return null;
+        }
+    }
+
+    // Notify crew of assignment
+    async function notifyCrewAssignment(flightData) {
+        try {
+            await utils.fetchAPI('/api/admin/notify-crew', {
+                method: 'POST',
+                body: JSON.stringify({
+                    flightNumber: flightData.flightNumber,
+                    departureTime: flightData.departureTime,
+                    pilot: flightData.pilot,
+                    firstOfficer: flightData.firstOfficer
+                })
+            });
+        } catch (error) {
+            console.error('Error notifying crew:', error);
         }
     }
 
