@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ATC Dashboard - 6E | IndiGo Airlines</title>
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        indigo: {
+                            primary: '#012A5E',
+                            secondary: '#0B42AB'
+                        }
+                    },
+                    fontFamily: {
+                        'inter': ['Inter', 'sans-serif']
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="font-inter bg-gray-50">
+    <!-- Navigation -->
+    <nav class="bg-white shadow-md">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <div class="flex">
+                    <div class="flex-shrink-0 flex items-center">
+                        <a href="/" class="text-2xl font-bold text-indigo-primary">6E | IndiGo</a>
+                    </div>
+                    <div class="hidden sm:ml-6 sm:flex sm:space-x-8">
+                        <a href="/" class="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
+                            Home
+                        </a>
+                        <a href="/atc-dashboard.html" class="border-indigo-primary text-gray-900 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
+                            ATC Dashboard
+                        </a>
+                    </div>
+                </div>
+                <div class="hidden sm:ml-6 sm:flex sm:items-center">
+                    <button id="loginBtn" class="bg-indigo-primary text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-indigo-secondary focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-primary">
+                        Login with Roblox
+                    </button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="min-h-screen flex">
+        <!-- Left Panel - Active Flights -->
+        <div class="w-1/3 bg-white border-r border-gray-200 p-6">
+            <h2 class="text-lg font-medium text-gray-900 mb-4">Active Flights</h2>
+            <div class="space-y-4" id="activeFlightsList">
+                <!-- Active flights will be populated here by atc.js -->
+            </div>
+        </div>
+
+        <!-- Right Panel - Flight Controls -->
+        <div class="flex-1 p-6">
+            <!-- Selected Flight Info -->
+            <div id="selectedFlightInfo" class="bg-white shadow rounded-lg p-6 mb-6 hidden">
+                <h3 class="text-lg font-medium text-gray-900 mb-4">Flight Information</h3>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <p class="text-sm text-gray-500">Flight Number</p>
+                        <p class="text-base font-medium text-gray-900" id="flightNumber"></p>
+                    </div>
+                    <div>
+                        <p class="text-sm text-gray-500">Aircraft</p>
+                        <p class="text-base font-medium text-gray-900" id="aircraft"></p>
+                    </div>
+                    <div>
+                        <p class="text-sm text-gray-500">Route</p>
+                        <p class="text-base font-medium text-gray-900" id="route"></p>
+                    </div>
+                    <div>
+                        <p class="text-sm text-gray-500">Status</p>
+                        <p class="text-base font-medium text-gray-900" id="status"></p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Weather Information -->
+            <div class="bg-white shadow rounded-lg p-6 mb-6">
+                <h3 class="text-lg font-medium text-gray-900 mb-4">Weather Information</h3>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <p class="text-sm text-gray-500">Wind Direction</p>
+                        <p class="text-base font-medium text-gray-900" id="windDirection">270° @ 10kts</p>
+                    </div>
+                    <div>
+                        <p class="text-sm text-gray-500">Visibility</p>
+                        <p class="text-base font-medium text-gray-900" id="visibility">10km</p>
+                    </div>
+                    <div>
+                        <p class="text-sm text-gray-500">Cloud Base</p>
+                        <p class="text-base font-medium text-gray-900" id="cloudBase">2500ft</p>
+                    </div>
+                    <div>
+                        <p class="text-sm text-gray-500">Temperature</p>
+                        <p class="text-base font-medium text-gray-900" id="temperature">25°C</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Clearance Controls -->
+            <div class="bg-white shadow rounded-lg p-6">
+                <h3 class="text-lg font-medium text-gray-900 mb-4">Clearance Controls</h3>
+                <div class="grid grid-cols-2 gap-4">
+                    <!-- ATC Clearance -->
+                    <div class="col-span-2">
+                        <button onclick="issueATCClearance()" class="w-full bg-indigo-primary text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-indigo-secondary focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-primary">
+                            Issue ATC Clearance
+                        </button>
+                    </div>
+
+                    <!-- Takeoff Clearance -->
+                    <div>
+                        <button onclick="issueTakeoffClearance()" class="w-full bg-green-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500">
+                            Takeoff Clearance
+                        </button>
+                    </div>
+
+                    <!-- Landing Clearance -->
+                    <div>
+                        <button onclick="issueLandingClearance()" class="w-full bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                            Landing Clearance
+                        </button>
+                    </div>
+
+                    <!-- Taxi Clearance -->
+                    <div>
+                        <button onclick="issueTaxiClearance()" class="w-full bg-yellow-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-yellow-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500">
+                            Taxi Clearance
+                        </button>
+                    </div>
+
+                    <!-- Pushback Clearance -->
+                    <div>
+                        <button onclick="issuePushbackClearance()" class="w-full bg-purple-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500">
+                            Pushback Clearance
+                        </button>
+                    </div>
+
+                    <!-- Other Clearances -->
+                    <div class="col-span-2">
+                        <select id="otherClearances" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-primary focus:border-indigo-primary sm:text-sm rounded-md">
+                            <option value="">Select other clearance...</option>
+                            <option value="climb">Climb Clearance</option>
+                            <option value="descent">Descent Clearance</option>
+                            <option value="approach">Approach Clearance</option>
+                            <option value="holding">Holding Clearance</option>
+                            <option value="crossing">Crossing Clearance</option>
+                        </select>
+                    </div>
+
+                    <!-- Issue Selected Clearance -->
+                    <div class="col-span-2">
+                        <button onclick="issueSelectedClearance()" class="w-full bg-gray-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500">
+                            Issue Selected Clearance
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Flight Delay Controls -->
+            <div class="mt-6 bg-white shadow rounded-lg p-6">
+                <h3 class="text-lg font-medium text-gray-900 mb-4">Flight Delay</h3>
+                <div class="space-y-4">
+                    <div>
+                        <label for="delayReason" class="block text-sm font-medium text-gray-700">Delay Reason</label>
+                        <select id="delayReason" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-primary focus:border-indigo-primary sm:text-sm rounded-md">
+                            <option value="">Select reason...</option>
+                            <option value="weather">Weather Conditions</option>
+                            <option value="technical">Technical Issues</option>
+                            <option value="traffic">Air Traffic</option>
+                            <option value="other">Other</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="delayDuration" class="block text-sm font-medium text-gray-700">Delay Duration (minutes)</label>
+                        <input type="number" id="delayDuration" min="1" max="180" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-primary focus:border-indigo-primary sm:text-sm rounded-md">
+                    </div>
+                    <button onclick="issueDelay()" class="w-full bg-red-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500">
+                        Issue Delay
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Voice Channel Controls -->
+    <div class="fixed bottom-0 right-0 m-6 bg-white shadow-lg rounded-lg p-4">
+        <div class="flex items-center space-x-4">
+            <div>
+                <label for="frequency" class="block text-sm font-medium text-gray-700">Radio Frequency</label>
+                <select id="frequency" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-primary focus:border-indigo-primary sm:text-sm rounded-md">
+                    <option value="ground">Ground (121.9)</option>
+                    <option value="tower">Tower (118.1)</option>
+                    <option value="approach">Approach (119.1)</option>
+                    <option value="departure">Departure (125.2)</option>
+                </select>
+            </div>
+            <button id="toggleVoice" class="bg-indigo-primary text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-indigo-secondary focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-primary">
+                Connect Voice
+            </button>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="js/auth.js"></script>
+    <script src="js/script.js"></script>
+    <script src="js/atc.js"></script>
+</body>
+</html>
