@@ -249,14 +249,212 @@ const utils = {
         );
     },
 
-    // Load script dynamically
-    loadScript(src) {
-        return new Promise((resolve, reject) => {
-            const script = document.createElement('script');
-            script.src = src;
-            script.onload = resolve;
-            script.onerror = reject;
-            document.head.appendChild(script);
+    // Load script dynamically with retry
+    loadScript(src, retries = 3, delay = 1000) {
+        return new Promise(async (resolve, reject) => {
+            let attempts = 0;
+            
+            const attemptLoad = async () => {
+                try {
+                    const script = document.createElement('script');
+                    script.src = src;
+                    
+                    const loadPromise = new Promise((res, rej) => {
+                        script.onload = res;
+                        script.onerror = rej;
+                    });
+                    
+                    document.head.appendChild(script);
+                    await loadPromise;
+                    resolve();
+                } catch (error) {
+                    attempts++;
+                    if (attempts < retries) {
+                        await new Promise(r => setTimeout(r, delay));
+                        return attemptLoad();
+                    }
+                    reject(error);
+                }
+            };
+            
+            attemptLoad();
         });
+    },
+
+    // Cache management
+    cache: {
+        data: new Map(),
+        maxAge: 5 * 60 * 1000, // 5 minutes default
+
+        async get(key, fetchFn, maxAge) {
+            const cached = this.data.get(key);
+            if (cached && Date.now() - cached.timestamp < (maxAge || this.maxAge)) {
+                return cached.value;
+            }
+
+            const value = await fetchFn();
+            this.data.set(key, {
+                value,
+                timestamp: Date.now()
+            });
+            return value;
+        },
+
+        clear(key) {
+            if (key) {
+                this.data.delete(key);
+            } else {
+                this.data.clear();
+            }
+        }
+    },
+
+    // Error handling with retry
+    async retryOperation(operation, retries = 3, delay = 1000) {
+        let lastError;
+        
+        for (let i = 0; i < retries; i++) {
+            try {
+                return await operation();
+            } catch (error) {
+                lastError = error;
+                if (i < retries - 1) {
+                    await new Promise(r => setTimeout(r, delay * Math.pow(2, i))); // Exponential backoff
+                }
+            }
+        }
+        
+        throw lastError;
+    },
+
+    // Form data serialization
+    serializeForm(form) {
+        const formData = new FormData(form);
+        const data = {};
+        
+        for (const [key, value] of formData.entries()) {
+            if (data[key]) {
+                if (!Array.isArray(data[key])) {
+                    data[key] = [data[key]];
+                }
+                data[key].push(value);
+            } else {
+                data[key] = value;
+            }
+        }
+        
+        return data;
+    },
+
+    // Enhanced validation
+    validation: {
+        patterns: {
+            email: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
+            phone: /^\+?[\d\s-]{8,}$/,
+            flightNumber: /^[A-Z\d]{2,3}\d{1,4}$/,
+            date: /^\d{4}-\d{2}-\d{2}$/,
+            time: /^([01]\d|2[0-3]):([0-5]\d)$/
+        },
+
+        validate(value, type) {
+            if (!value) return false;
+            return this.patterns[type].test(value);
+        },
+
+        validateAll(data, rules) {
+            const errors = {};
+            
+            for (const [field, rule] of Object.entries(rules)) {
+                if (rule.required && !data[field]) {
+                    errors[field] = 'This field is required';
+                    continue;
+                }
+
+                if (data[field] && rule.pattern && !this.validate(data[field], rule.pattern)) {
+                    errors[field] = rule.message || `Invalid ${field} format`;
+                }
+
+                if (rule.custom) {
+                    const customError = rule.custom(data[field], data);
+                    if (customError) {
+                        errors[field] = customError;
+                    }
+                }
+            }
+
+            return {
+                isValid: Object.keys(errors).length === 0,
+                errors
+            };
+        }
+    },
+
+    // Date utilities
+    dateUtils: {
+        addDays(date, days) {
+            const result = new Date(date);
+            result.setDate(result.getDate() + days);
+            return result;
+        },
+
+        formatRelative(date) {
+            const now = new Date();
+            const diff = Math.floor((date - now) / 1000);
+            
+            if (diff < 0) return 'past';
+            if (diff < 60) return 'just now';
+            if (diff < 3600) return `${Math.floor(diff / 60)}m`;
+            if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
+            return `${Math.floor(diff / 86400)}d`;
+        },
+
+        getTimeSlots(start, end, duration) {
+            const slots = [];
+            let current = new Date(start);
+            
+            while (current < end) {
+                slots.push(new Date(current));
+                current = new Date(current.getTime() + duration * 60000);
+            }
+            
+            return slots;
+        }
+    },
+
+    // Analytics tracking
+    analytics: {
+        events: [],
+        
+        track(eventName, data = {}) {
+            const event = {
+                name: eventName,
+                data,
+                timestamp: new Date(),
+                sessionId: this.getSessionId()
+            };
+            
+            this.events.push(event);
+            this.sendToServer(event);
+        },
+        
+        getSessionId() {
+            let sessionId = localStorage.getItem('sessionId');
+            if (!sessionId) {
+                sessionId = utils.generateId();
+                localStorage.setItem('sessionId', sessionId);
+            }
+            return sessionId;
+        },
+        
+        async sendToServer(event) {
+            try {
+                await utils.fetchAPI('/api/analytics', {
+                    method: 'POST',
+                    body: JSON.stringify(event)
+                });
+            } catch (error) {
+                console.error('Failed to send analytics:', error);
+            }
+        }
     }
 };
