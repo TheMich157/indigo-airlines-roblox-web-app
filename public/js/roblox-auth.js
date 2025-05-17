@@ -130,42 +130,237 @@ const RobloxAuth = {
         return data.some(group => group.group.id === this.GROUP_ID);
     },
 
-    // Get user info
+    // Get user info with enhanced security and validation
     async getUserInfo(token) {
-        const response = await fetch('https://users.roblox.com/v1/users/authenticated', {
-            headers: {
-                'Authorization': `Bearer ${token}`
+        try {
+            // Verify token hasn't expired
+            if (this.isTokenExpired(token)) {
+                throw new Error('Token has expired');
             }
-        });
 
-        if (!response.ok) {
+            // Get basic user info
+            const response = await fetch('https://users.roblox.com/v1/users/authenticated', {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'X-CSRF-TOKEN': await this.getRobloxCsrfToken()
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error('Failed to get user info');
+            }
+
+            const userData = await response.json();
+
+            // Validate user data
+            this.validateUserData(userData);
+
+            // Get additional user data in parallel
+            const [
+                userRoles,
+                groupRank,
+                premiumStatus,
+                verificationStatus
+            ] = await Promise.all([
+                this.getUserRoles(userData.id),
+                this.getGroupRank(userData.id),
+                this.checkPremiumStatus(userData.id),
+                this.getVerificationStatus(userData.id)
+            ]);
+
+            // Check minimum requirements
+            if (!this.meetsMinimumRequirements(groupRank, premiumStatus)) {
+                throw new Error('User does not meet minimum requirements');
+            }
+
+            return {
+                id: userData.id,
+                username: userData.name,
+                displayName: userData.displayName,
+                roles: userRoles.roles,
+                rank: userRoles.rank,
+                groupRank: groupRank,
+                mileage: userRoles.mileage,
+                isPremium: premiumStatus.isPremium,
+                isVerified: verificationStatus.isVerified,
+                joinDate: userData.created,
+                lastLogin: new Date().toISOString(),
+                permissions: this.calculatePermissions(userRoles.roles, groupRank)
+            };
+        } catch (error) {
+            console.error('Error getting user info:', error);
             throw new Error('Failed to get user info');
         }
-
-        const userData = await response.json();
-
-        // Get additional user data (roles, rank, etc.)
-        const userRoles = await this.getUserRoles(userData.id);
-
-        return {
-            id: userData.id,
-            username: userData.name,
-            displayName: userData.displayName,
-            roles: userRoles.roles,
-            rank: userRoles.rank,
-            mileage: userRoles.mileage
-        };
     },
 
-    // Get user roles and rank
-    async getUserRoles(userId) {
-        const response = await fetch(`/api/auth/user-roles/${userId}`);
+    // Get CSRF token for Roblox API requests
+    async getRobloxCsrfToken() {
+        const response = await fetch('https://auth.roblox.com/v2/csrf', {
+            method: 'POST',
+            credentials: 'include'
+        });
+        return response.headers.get('x-csrf-token');
+    },
+
+    // Validate user data
+    validateUserData(userData) {
+        if (!userData.id || !userData.name) {
+            throw new Error('Invalid user data received');
+        }
         
-        if (!response.ok) {
-            throw new Error('Failed to get user roles');
+        // Validate username format
+        if (!/^[\w\d_]{3,20}$/.test(userData.name)) {
+            throw new Error('Invalid username format');
         }
 
-        return await response.json();
+        // Check account age
+        const accountAge = (new Date() - new Date(userData.created)) / (1000 * 60 * 60 * 24);
+        if (accountAge < config.roblox.minAccountAge) {
+            throw new Error('Account too new');
+        }
+    },
+
+    // Get user roles with caching
+    async getUserRoles(userId) {
+        const cacheKey = `user_roles_${userId}`;
+        
+        try {
+            return await utils.cache.get(cacheKey, async () => {
+                const response = await fetch(`/api/auth/user-roles/${userId}`);
+                
+                if (!response.ok) {
+                    throw new Error('Failed to get user roles');
+                }
+
+                return await response.json();
+            }, 300000); // Cache for 5 minutes
+        } catch (error) {
+            console.error('Error getting user roles:', error);
+            throw new Error('Failed to get user roles');
+        }
+    },
+
+    // Get group rank with verification
+    async getGroupRank(userId) {
+        try {
+            const response = await fetch(`https://groups.roblox.com/v1/users/${userId}/groups/roles`);
+            
+            if (!response.ok) {
+                throw new Error('Failed to get group rank');
+            }
+
+            const data = await response.json();
+            const groupData = data.data.find(g => g.group.id === this.GROUP_ID);
+            
+            if (!groupData) {
+                throw new Error('User not in group');
+            }
+
+            return {
+                rankId: groupData.role.rank,
+                rankName: groupData.role.name,
+                rankLevel: this.getRankLevel(groupData.role.name)
+            };
+        } catch (error) {
+            console.error('Error getting group rank:', error);
+            throw new Error('Failed to get group rank');
+        }
+    },
+
+    // Check premium status
+    async checkPremiumStatus(userId) {
+        try {
+            const response = await fetch(`https://premiumfeatures.roblox.com/v1/users/${userId}/validate-membership`);
+            
+            if (!response.ok) {
+                throw new Error('Failed to check premium status');
+            }
+
+            const data = await response.json();
+            return {
+                isPremium: data.isPremium,
+                membershipType: data.membershipType
+            };
+        } catch (error) {
+            console.error('Error checking premium status:', error);
+            return { isPremium: false };
+        }
+    },
+
+    // Get verification status
+    async getVerificationStatus(userId) {
+        try {
+            const response = await fetch(`/api/auth/verification-status/${userId}`);
+            
+            if (!response.ok) {
+                throw new Error('Failed to get verification status');
+            }
+
+            return await response.json();
+        } catch (error) {
+            console.error('Error getting verification status:', error);
+            return { isVerified: false };
+        }
+    },
+
+    // Calculate permissions based on roles and rank
+    calculatePermissions(roles, groupRank) {
+        const permissions = new Set();
+
+        // Add role-based permissions
+        roles.forEach(role => {
+            const rolePermissions = config.permissions[role] || [];
+            rolePermissions.forEach(p => permissions.add(p));
+        });
+
+        // Add rank-based permissions
+        const rankPermissions = config.permissions[`rank_${groupRank.rankId}`] || [];
+        rankPermissions.forEach(p => permissions.add(p));
+
+        return Array.from(permissions);
+    },
+
+    // Check if token is expired
+    isTokenExpired(token) {
+        try {
+            const payload = JSON.parse(atob(token.split('.')[1]));
+            return Date.now() >= payload.exp * 1000;
+        } catch (error) {
+            return true;
+        }
+    },
+
+    // Check minimum requirements
+    meetsMinimumRequirements(groupRank, premiumStatus) {
+        // Must be at least a trainee rank
+        if (groupRank.rankLevel < config.roblox.minRankLevel) {
+            return false;
+        }
+
+        // Premium requirement can be configured
+        if (config.roblox.requirePremium && !premiumStatus.isPremium) {
+            return false;
+        }
+
+        return true;
+    },
+
+    // Get rank level for sorting/comparison
+    getRankLevel(rankName) {
+        const rankLevels = {
+            'Guest': 0,
+            'Trainee': 1,
+            'Junior': 2,
+            'Senior': 3,
+            'Expert': 4,
+            'Manager': 5,
+            'Administrator': 6
+        };
+
+        for (const [key, level] of Object.entries(rankLevels)) {
+            if (rankName.includes(key)) return level;
+        }
+        return 0;
     },
 
     // Generate random state parameter
