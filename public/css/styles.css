@@ -1,0 +1,130 @@
+/* Custom styles beyond Tailwind */
+
+/* Voice channel status indicators */
+.voice-active {
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0% {
+        box-shadow: 0 0 0 0 rgba(1, 42, 94, 0.7);
+    }
+    70% {
+        box-shadow: 0 0 0 10px rgba(1, 42, 94, 0);
+    }
+    100% {
+        box-shadow: 0 0 0 0 rgba(1, 42, 94, 0);
+    }
+}
+
+/* Seat map styles */
+.seat {
+    transition: all 0.2s ease-in-out;
+}
+
+.seat:hover:not(.occupied):not(.selected) {
+    transform: scale(1.1);
+}
+
+.seat.business {
+    background-color: #FCD34D;
+}
+
+.seat.selected {
+    background-color: #012A5E;
+    color: white;
+}
+
+.seat.occupied {
+    background-color: #9CA3AF;
+    cursor: not-allowed;
+}
+
+/* Flight status indicators */
+.status-scheduled {
+    background-color: #93C5FD;
+    color: #1E40AF;
+}
+
+.status-in-progress {
+    background-color: #FCD34D;
+    color: #92400E;
+}
+
+.status-completed {
+    background-color: #86EFAC;
+    color: #166534;
+}
+
+.status-delayed {
+    background-color: #FCA5A5;
+    color: #991B1B;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+    width: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: #F3F4F6;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #012A5E;
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #0B42AB;
+}
+
+/* Loading spinner */
+.loading-spinner {
+    border: 3px solid #F3F4F6;
+    border-radius: 50%;
+    border-top: 3px solid #012A5E;
+    width: 24px;
+    height: 24px;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Toast notifications */
+.toast {
+    position: fixed;
+    bottom: 1rem;
+    right: 1rem;
+    padding: 1rem;
+    border-radius: 0.5rem;
+    color: white;
+    animation: slideIn 0.3s ease-out;
+    z-index: 50;
+}
+
+.toast-success {
+    background-color: #059669;
+}
+
+.toast-error {
+    background-color: #DC2626;
+}
+
+.toast-info {
+    background-color: #012A5E;
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
