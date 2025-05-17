@@ -1,123 +1,119 @@
-// Authentication module for Roblox integration
+// Authentication and user management
 const auth = {
-    // Authentication state
+    // User state
     isAuthenticated: false,
     userInfo: null,
-    roles: [],
+    onAuthStateChanged: null,
 
-    // Initialize auth state from session storage
+    // Initialize auth
     init() {
+        // Check for existing session
+        this.checkSession();
+    },
+
+    // Check existing session
+    async checkSession() {
         try {
-            const storedAuth = sessionStorage.getItem('auth');
-            if (storedAuth) {
-                const authData = JSON.parse(storedAuth);
-                this.isAuthenticated = true;
-                this.userInfo = authData.userInfo;
-                this.roles = authData.roles;
+            const response = await utils.fetchAPI(config.api.endpoints.auth.session);
+            if (response.authenticated) {
+                this.setUserInfo(response.user);
             }
         } catch (error) {
-            console.error('Error initializing auth:', error);
-            sessionStorage.removeItem('auth');
+            console.error('Error checking session:', error);
+        }
+    },
+
+    // Set user info and update state
+    setUserInfo(user) {
+        this.isAuthenticated = true;
+        this.userInfo = user;
+        
+        // Store session
+        localStorage.setItem('userInfo', JSON.stringify(user));
+        
+        // Notify listeners
+        if (this.onAuthStateChanged) {
+            this.onAuthStateChanged();
+        }
+    },
+
+    // Clear user info and update state
+    clearUserInfo() {
+        this.isAuthenticated = false;
+        this.userInfo = null;
+        
+        // Clear session
+        localStorage.removeItem('userInfo');
+        
+        // Notify listeners
+        if (this.onAuthStateChanged) {
+            this.onAuthStateChanged();
         }
     },
 
     // Login with Roblox
-    async login() {
-        try {
-            // TODO: Implement actual Roblox OAuth flow
-            // For now, simulate a successful login
-            const mockUserData = await this.mockRobloxAuth();
-            
-            this.isAuthenticated = true;
-            this.userInfo = mockUserData;
-            this.roles = mockUserData.roles;
-
-            // Store auth data in session
-            sessionStorage.setItem('auth', JSON.stringify({
-                userInfo: this.userInfo,
-                roles: this.roles
-            }));
-
-            // Notify success
-            utils.showNotification('Successfully logged in', 'success');
-            return true;
-        } catch (error) {
-            console.error('Login error:', error);
-            utils.showNotification('Login failed. Please try again.', 'error');
-            return false;
-        }
+    login() {
+        RobloxAuth.startLogin();
     },
 
     // Logout
-    async logout() {
-        try {
-            this.isAuthenticated = false;
-            this.userInfo = null;
-            this.roles = [];
-            sessionStorage.removeItem('auth');
-            utils.showNotification('Successfully logged out', 'success');
-            return true;
-        } catch (error) {
-            console.error('Logout error:', error);
-            utils.showNotification('Logout failed. Please try again.', 'error');
-            return false;
-        }
+    logout() {
+        this.handleLogout();
     },
 
-    // Check if user has specific role
-    hasRole(role) {
-        return this.roles.includes(role);
-    },
-
-    // Check if user has business class access
-    async hasBusinessClassAccess() {
-        try {
-            if (!this.isAuthenticated) return false;
-            
-            // TODO: Implement actual gamepass check
-            // For now, check if user has 'business_class' role
-            return this.hasRole('business_class');
-        } catch (error) {
-            console.error('Error checking business class access:', error);
-            return false;
-        }
-    },
-
-    // Check if user is ATC
-    isATC() {
-        return this.hasRole('atc');
-    },
-
-    // Check if user is Pilot
+    // Role checks
     isPilot() {
-        return this.hasRole('pilot') || this.hasRole('first_officer');
+        return this.userInfo?.roles.includes('pilot');
     },
 
-    // Check if user is Supervisor or higher
+    isATC() {
+        return this.userInfo?.roles.includes('atc');
+    },
+
     isSupervisor() {
-        return this.hasRole('supervisor') || this.hasRole('admin');
+        return this.userInfo?.roles.includes('supervisor');
     },
 
-    // Mock Roblox authentication (temporary)
-    async mockRobloxAuth() {
-        return new Promise((resolve) => {
-            setTimeout(() => {
-                resolve({
-                    id: '12345',
-                    username: 'TestUser',
-                    displayName: 'Test User',
-                    roles: ['user'],
-                    created: new Date().toISOString()
-                });
-            }, 1000);
-        });
+    // Check business class access
+    async hasBusinessClassAccess() {
+        if (!this.isAuthenticated) return false;
+
+        try {
+            const response = await utils.fetchAPI(config.api.endpoints.auth.checkGamepass);
+            return response.hasAccess;
+        } catch (error) {
+            console.error('Error checking gamepass:', error);
+            return false;
+        }
+    },
+
+    // Get user rank
+    getUserRank() {
+        if (!this.isAuthenticated) return null;
+        return this.userInfo.rank;
+    },
+
+    // Get user mileage
+    getUserMileage() {
+        if (!this.isAuthenticated) return 0;
+        return this.userInfo.mileage;
+    },
+
+    // Check if user can access specific features
+    canAccessFeature(feature) {
+        if (!this.isAuthenticated) return false;
+
+        const featureRequirements = {
+            'book_flight': true, // All authenticated users
+            'select_business': this.hasBusinessClassAccess(),
+            'atc_clearance': this.isATC(),
+            'flight_planning': this.isPilot(),
+            'user_management': this.isSupervisor()
+        };
+
+        return featureRequirements[feature] || false;
     }
 };
 
-// Initialize auth on page load
-document.addEventListener('DOMContentLoaded', () => {
-    auth.init();
-});
-
-// Export auth module
-window.auth = auth;
+// Initialize auth on load
+auth.init();
