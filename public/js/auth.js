@@ -16,21 +16,8 @@ const auth = {
     // Initialize auth with Roblox OAuth
     async init() {
         try {
-            // Set up session refresh interval
-            this.startSessionRefresh();
-
-            // Set up activity monitoring
-            this.setupActivityMonitoring();
-
             // Check for existing session
             await this.checkSession();
-
-            // Set up storage event listener for multi-tab sync
-            window.addEventListener('storage', this.handleStorageChange.bind(this));
-
-            // Set up network status monitoring
-            window.addEventListener('online', this.handleOnline.bind(this));
-            window.addEventListener('offline', this.handleOffline.bind(this));
 
             // Set up login button
             const loginBtn = document.getElementById('loginBtn');
@@ -43,7 +30,6 @@ const auth = {
             if (params.has('code')) {
                 await this.handleRobloxCallback(params);
             }
-
         } catch (error) {
             console.error('Error initializing auth:', error);
             this.handleAuthError(error);
@@ -58,27 +44,20 @@ const auth = {
             localStorage.setItem('oauth_state', state);
 
             // Make request to mock auth endpoint
-            const response = await fetch('/api/mock-auth', {
+            const response = await utils.fetchAPI('/api/mock-auth', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
                 body: JSON.stringify({
                     client_id: config.roblox.clientId,
                     redirect_uri: config.roblox.redirectUri,
                     response_type: 'code',
                     scope: config.roblox.scope,
-                    state: state
+                    state: state,
+                    nonce: utils.generateId()
                 })
             });
 
-            if (!response.ok) {
-                throw new Error('Failed to start auth process');
-            }
-
-            const data = await response.json();
-            if (!data.success) {
-                throw new Error(data.message || 'Authentication failed');
+            if (!response.success) {
+                throw new Error(response.message || 'Authentication failed');
             }
         } catch (error) {
             console.error('Error starting auth:', error);
@@ -88,19 +67,19 @@ const auth = {
 
     // Handle Roblox OAuth callback
     async handleRobloxCallback(params) {
-        const code = params.get('code');
-        const state = params.get('state');
-        const storedState = localStorage.getItem('oauth_state');
-
-        // Verify state parameter
-        if (!state || state !== storedState) {
-            throw new Error('Invalid authentication state');
-        }
-
-        // Clear stored state
-        localStorage.removeItem('oauth_state');
-
         try {
+            const code = params.get('code');
+            const state = params.get('state');
+            const storedState = localStorage.getItem('oauth_state');
+
+            // Verify state parameter
+            if (!state || state !== storedState) {
+                throw new Error('Invalid authentication state');
+            }
+
+            // Clear stored state
+            localStorage.removeItem('oauth_state');
+
             // Exchange code for tokens
             const response = await utils.fetchAPI('/api/auth/callback', {
                 method: 'POST',
@@ -115,6 +94,8 @@ const auth = {
             await this.handleAuthSuccess(response);
             utils.showNotification('Successfully logged in', 'success');
 
+            // Redirect to home page
+            window.location.href = '/';
         } catch (error) {
             console.error('Error handling callback:', error);
             utils.showNotification('Failed to complete login', 'error');
