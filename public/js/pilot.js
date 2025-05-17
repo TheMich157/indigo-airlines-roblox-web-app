@@ -1,250 +1,333 @@
 // Pilot Dashboard functionality
 document.addEventListener('DOMContentLoaded', () => {
-    // Check if user has pilot access
-    if (!auth.isAuthenticated || !auth.hasRole('pilot')) {
-        window.location.href = '/';
-        return;
+    // DOM Elements
+    const dashboardContent = document.getElementById('dashboardContent');
+    const accessDenied = document.getElementById('accessDenied');
+    const flightPlanForm = document.getElementById('flightPlanForm');
+    const flightAssignments = document.getElementById('flightAssignments');
+    const activityLog = document.getElementById('activityLog');
+    const joinVoiceBtn = document.getElementById('joinVoiceBtn');
+
+    // Socket.IO connection
+    let socket;
+
+    // Initialize dashboard
+    async function initDashboard() {
+        if (!auth.isAuthenticated || !auth.isPilot()) {
+            dashboardContent.classList.add('hidden');
+            accessDenied.classList.remove('hidden');
+            return;
+        }
+
+        dashboardContent.classList.remove('hidden');
+        accessDenied.classList.add('hidden');
+
+        // Initialize Socket.IO
+        initializeSocket();
+
+        // Load initial data
+        await Promise.all([
+            loadPilotStats(),
+            loadFlightAssignments(),
+            populateAirports(),
+            loadActivityLog()
+        ]);
+
+        // Set up event listeners
+        setupEventListeners();
     }
 
-    // State management
-    let voiceConnected = false;
-    let pilotStats = null;
-    let upcomingFlights = [];
-    let flightLog = [];
+    // Initialize Socket.IO connection
+    function initializeSocket() {
+        socket = io(config.socket.url, config.socket.options);
 
-    // DOM Elements
-    const toggleVoiceBtn = document.getElementById('toggleVoice');
-    const upcomingFlightsList = document.getElementById('upcomingFlightsList');
-    const flightLogList = document.getElementById('flightLogList');
-    const rankUpButton = document.getElementById('rankUpButton');
+        socket.on('connect', () => {
+            console.log('Connected to server');
+        });
 
-    // Initialize voice connection status
-    toggleVoiceBtn.addEventListener('click', toggleVoiceConnection);
+        socket.on('flight_status_updated', (flight) => {
+            updateFlightAssignment(flight);
+        });
 
-    // Load pilot data
-    async function loadPilotData() {
+        socket.on('clearance_issued', (clearance) => {
+            if (clearance.flightId === getCurrentFlightId()) {
+                addActivityLogEntry({
+                    type: 'clearance',
+                    message: `Received ${clearance.type}`,
+                    timestamp: new Date()
+                });
+            }
+        });
+
+        socket.on('voice_channel_joined', (data) => {
+            updateVoiceChannelStatus(data);
+        });
+
+        socket.on('voice_channel_left', (data) => {
+            updateVoiceChannelStatus(data);
+        });
+    }
+
+    // Load pilot statistics
+    async function loadPilotStats() {
         try {
-            // TODO: Replace with actual API call
-            const mockPilotData = {
-                totalMiles: 15420,
-                totalFlights: 42,
-                currentRank: 'First Officer',
-                hoursFlown: 156,
-                rankProgress: 45
-            };
-
-            updatePilotStats(mockPilotData);
+            const stats = await utils.fetchAPI(config.api.endpoints.pilot.mileage);
+            updatePilotStats(stats);
         } catch (error) {
-            utils.showNotification('Failed to load pilot data', 'error');
+            console.error('Error loading pilot stats:', error);
+            utils.showNotification('Failed to load pilot statistics', 'error');
         }
     }
 
     // Update pilot statistics display
     function updatePilotStats(stats) {
-        pilotStats = stats;
-        document.getElementById('totalMiles').textContent = stats.totalMiles.toLocaleString();
-        document.getElementById('totalFlights').textContent = stats.totalFlights;
         document.getElementById('currentRank').textContent = stats.currentRank;
-        document.getElementById('hoursFlown').textContent = stats.hoursFlown;
-        
-        // Update rank progress
-        document.getElementById('rankProgress').textContent = `${stats.rankProgress}%`;
-        document.getElementById('rankProgressBar').style.width = `${stats.rankProgress}%`;
+        document.getElementById('totalMileage').textContent = `${stats.totalMileage} nm`;
+        document.getElementById('nextRank').textContent = stats.nextRank;
 
-        // Enable/disable rank up button based on progress
-        rankUpButton.disabled = stats.rankProgress < 100;
-        if (stats.rankProgress < 100) {
-            rankUpButton.classList.add('opacity-50', 'cursor-not-allowed');
-        } else {
-            rankUpButton.classList.remove('opacity-50', 'cursor-not-allowed');
-        }
+        // Update progress bar
+        const progressBar = document.getElementById('rankProgress');
+        const progress = (stats.currentMileage / stats.nextRankMileage) * 100;
+        progressBar.style.width = `${progress}%`;
     }
 
-    // Load upcoming flights
-    async function loadUpcomingFlights() {
+    // Load flight assignments
+    async function loadFlightAssignments() {
         try {
-            // TODO: Replace with actual API call
-            const mockFlights = [
-                {
-                    id: '1',
-                    flightNumber: '6E-123',
-                    route: 'COK → BOM',
-                    departure: '2024-02-20T10:00',
-                    aircraft: 'A320',
-                    role: 'Captain'
-                },
-                {
-                    id: '2',
-                    flightNumber: '6E-456',
-                    route: 'BOM → DEL',
-                    departure: '2024-02-21T14:30',
-                    aircraft: 'A330',
-                    role: 'First Officer'
-                }
-            ];
-
-            upcomingFlights = mockFlights;
-            displayUpcomingFlights();
+            const assignments = await utils.fetchAPI(`${config.api.endpoints.flights.list}?pilot=${auth.userInfo.id}`);
+            displayFlightAssignments(assignments);
         } catch (error) {
-            utils.showNotification('Failed to load upcoming flights', 'error');
+            console.error('Error loading flight assignments:', error);
+            utils.showNotification('Failed to load flight assignments', 'error');
         }
     }
 
-    // Display upcoming flights
-    function displayUpcomingFlights() {
-        upcomingFlightsList.innerHTML = '';
-        upcomingFlights.forEach(flight => {
-            const li = document.createElement('li');
-            li.className = 'py-4';
-            li.innerHTML = `
-                <div class="flex items-center space-x-4">
-                    <div class="flex-1 min-w-0">
-                        <p class="text-sm font-medium text-gray-900 truncate">
-                            ${flight.flightNumber} - ${flight.route}
-                        </p>
-                        <p class="text-sm text-gray-500">
-                            ${utils.formatDate(flight.departure)} | ${flight.aircraft}
-                        </p>
-                    </div>
-                    <div class="inline-flex items-center text-sm font-semibold text-indigo-primary">
-                        ${flight.role}
-                    </div>
+    // Display flight assignments
+    function displayFlightAssignments(assignments) {
+        flightAssignments.innerHTML = '';
+        assignments.forEach(flight => {
+            const assignmentElement = createFlightAssignmentElement(flight);
+            flightAssignments.appendChild(assignmentElement);
+        });
+
+        // Update flight number select in flight plan form
+        updateFlightNumberSelect(assignments);
+    }
+
+    // Create flight assignment element
+    function createFlightAssignmentElement(flight) {
+        const div = document.createElement('div');
+        div.className = 'bg-gray-50 p-4 rounded-md';
+        div.innerHTML = `
+            <div class="flex justify-between items-center">
+                <div>
+                    <p class="text-lg font-semibold">${flight.flightNumber}</p>
+                    <p class="text-sm text-gray-500">${flight.departure} → ${flight.arrival}</p>
+                    <p class="text-sm text-gray-500">${utils.formatDate(flight.departureTime)}</p>
                 </div>
-            `;
-            upcomingFlightsList.appendChild(li);
+                <span class="px-2 py-1 text-sm rounded-full ${
+                    flight.status === 'delayed' ? 'bg-red-100 text-red-800' :
+                    flight.status === 'boarding' ? 'bg-green-100 text-green-800' :
+                    'bg-blue-100 text-blue-800'
+                }">${utils.formatFlightStatus(flight.status)}</span>
+            </div>
+        `;
+        return div;
+    }
+
+    // Populate airports in flight plan form
+    function populateAirports() {
+        const departureSelect = document.getElementById('departure');
+        const arrivalSelect = document.getElementById('arrival');
+
+        departureSelect.innerHTML = '<option value="">Select airport</option>';
+        arrivalSelect.innerHTML = '<option value="">Select airport</option>';
+
+        Object.entries(config.airports).forEach(([code, airport]) => {
+            const option = document.createElement('option');
+            option.value = code;
+            option.textContent = `${airport.city} (${code})`;
+            
+            departureSelect.appendChild(option.cloneNode(true));
+            arrivalSelect.appendChild(option.cloneNode(true));
         });
     }
 
-    // Load flight log
-    async function loadFlightLog() {
-        try {
-            // TODO: Replace with actual API call
-            const mockLog = [
-                {
-                    id: '1',
-                    flightNumber: '6E-789',
-                    route: 'DEL → MAA',
-                    date: '2024-02-18',
-                    miles: 1250,
-                    role: 'Captain',
-                    status: 'Completed'
-                },
-                {
-                    id: '2',
-                    flightNumber: '6E-321',
-                    route: 'MAA → COK',
-                    date: '2024-02-17',
-                    miles: 850,
-                    role: 'First Officer',
-                    status: 'Completed'
-                }
-            ];
+    // Update flight number select in flight plan form
+    function updateFlightNumberSelect(assignments) {
+        const flightNumberSelect = document.getElementById('flightNumber');
+        flightNumberSelect.innerHTML = '<option value="">Select flight</option>';
 
-            flightLog = mockLog;
-            displayFlightLog();
-        } catch (error) {
-            utils.showNotification('Failed to load flight log', 'error');
-        }
-    }
-
-    // Display flight log
-    function displayFlightLog() {
-        flightLogList.innerHTML = '';
-        flightLog.forEach(flight => {
-            const li = document.createElement('li');
-            li.className = 'py-4';
-            li.innerHTML = `
-                <div class="flex items-center space-x-4">
-                    <div class="flex-1 min-w-0">
-                        <p class="text-sm font-medium text-gray-900 truncate">
-                            ${flight.flightNumber} - ${flight.route}
-                        </p>
-                        <p class="text-sm text-gray-500">
-                            ${utils.formatDate(flight.date)} | ${flight.miles} miles
-                        </p>
-                    </div>
-                    <div class="inline-flex items-center text-sm font-semibold ${
-                        flight.status === 'Completed' ? 'text-green-600' : 'text-yellow-600'
-                    }">
-                        ${flight.status}
-                    </div>
-                </div>
-            `;
-            flightLogList.appendChild(li);
+        assignments.forEach(flight => {
+            if (flight.status === 'scheduled') {
+                const option = document.createElement('option');
+                option.value = flight.id;
+                option.textContent = flight.flightNumber;
+                flightNumberSelect.appendChild(option);
+            }
         });
     }
 
-    // Voice channel connection toggle
-    function toggleVoiceConnection() {
-        voiceConnected = !voiceConnected;
-        toggleVoiceBtn.textContent = voiceConnected ? 'Disconnect Voice' : 'Connect Voice';
-        toggleVoiceBtn.classList.toggle('bg-red-600');
-        toggleVoiceBtn.classList.toggle('bg-indigo-primary');
-
-        // TODO: Implement actual voice connection logic
-        utils.showNotification(
-            voiceConnected ? 'Connected to voice channel' : 'Disconnected from voice channel',
-            voiceConnected ? 'success' : 'info'
-        );
+    // Load activity log
+    async function loadActivityLog() {
+        try {
+            const activities = await utils.fetchAPI(`${config.api.endpoints.pilot.activityLog}?pilot=${auth.userInfo.id}`);
+            displayActivityLog(activities);
+        } catch (error) {
+            console.error('Error loading activity log:', error);
+            utils.showNotification('Failed to load activity log', 'error');
+        }
     }
 
-    // Assign to flight handler
-    window.assignToFlight = async () => {
+    // Display activity log
+    function displayActivityLog(activities) {
+        activityLog.innerHTML = '';
+        activities.forEach(activity => {
+            const logEntry = createActivityLogEntry(activity);
+            activityLog.appendChild(logEntry);
+        });
+    }
+
+    // Create activity log entry
+    function createActivityLogEntry(activity) {
+        const div = document.createElement('div');
+        div.className = 'bg-gray-50 p-4 rounded-md';
+        div.innerHTML = `
+            <p class="text-sm text-gray-500">${utils.formatDate(activity.timestamp)}</p>
+            <p class="font-medium">${activity.message}</p>
+        `;
+        return div;
+    }
+
+    // Add entry to activity log
+    function addActivityLogEntry(activity) {
+        const logEntry = createActivityLogEntry(activity);
+        activityLog.insertBefore(logEntry, activityLog.firstChild);
+    }
+
+    // Set up event listeners
+    function setupEventListeners() {
+        // Flight plan form submission
+        flightPlanForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            await submitFlightPlan();
+        });
+
+        // Voice channel controls
+        joinVoiceBtn.addEventListener('click', toggleVoiceChannel);
+
+        // Auto-populate route based on selected airports
+        document.getElementById('departure').addEventListener('change', updateRouteField);
+        document.getElementById('arrival').addEventListener('change', updateRouteField);
+    }
+
+    // Submit flight plan
+    async function submitFlightPlan() {
         try {
-            // TODO: Replace with actual flight assignment modal and API call
-            const assigned = await simulateApiCall({
-                type: 'assignFlight',
-                pilotId: auth.user.id
+            const formData = new FormData(flightPlanForm);
+            const flightPlan = {
+                flightId: formData.get('flightNumber'),
+                departure: formData.get('departure'),
+                arrival: formData.get('arrival'),
+                aircraft: formData.get('aircraft'),
+                cruisingAltitude: formData.get('cruisingAltitude'),
+                route: formData.get('route'),
+                pilotId: auth.userInfo.id
+            };
+
+            const response = await utils.fetchAPI(config.api.endpoints.pilot.flightPlan, {
+                method: 'POST',
+                body: JSON.stringify(flightPlan)
             });
 
-            utils.showNotification('Successfully assigned to flight', 'success');
-            loadUpcomingFlights(); // Refresh the upcoming flights list
-        } catch (error) {
-            utils.showNotification('Failed to assign to flight', 'error');
-        }
-    };
-
-    // Request rank up handler
-    window.requestRankUp = async () => {
-        if (pilotStats.rankProgress < 100) {
-            utils.showNotification('You have not met the requirements for rank up yet', 'error');
-            return;
-        }
-
-        try {
-            // TODO: Replace with actual rank up API call
-            const rankUp = await simulateApiCall({
-                type: 'rankUp',
-                pilotId: auth.user.id,
-                currentRank: pilotStats.currentRank
+            utils.showNotification('Flight plan submitted successfully', 'success');
+            flightPlanForm.reset();
+            addActivityLogEntry({
+                type: 'flight_plan',
+                message: `Flight plan submitted for ${response.flightNumber}`,
+                timestamp: new Date()
             });
-
-            utils.showNotification('Rank up request submitted successfully', 'success');
         } catch (error) {
-            utils.showNotification('Failed to submit rank up request', 'error');
+            console.error('Error submitting flight plan:', error);
+            utils.showNotification('Failed to submit flight plan', 'error');
         }
-    };
-
-    // Simulate API call with delay
-    function simulateApiCall(data) {
-        return new Promise((resolve, reject) => {
-            setTimeout(() => {
-                if (Math.random() > 0.1) { // 90% success rate
-                    console.log('API Call:', data);
-                    resolve(data);
-                } else {
-                    reject(new Error('API call failed'));
-                }
-            }, 500);
-        });
     }
 
-    // Initialize dashboard
-    loadPilotData();
-    loadUpcomingFlights();
-    loadFlightLog();
+    // Toggle voice channel
+    async function toggleVoiceChannel() {
+        const frequency = document.getElementById('frequency').value;
+        const isJoining = joinVoiceBtn.textContent === 'Join Channel';
 
-    // Refresh data periodically
-    setInterval(loadUpcomingFlights, 60000); // Refresh upcoming flights every minute
-    setInterval(loadFlightLog, 300000); // Refresh flight log every 5 minutes
+        try {
+            const endpoint = isJoining ? 
+                config.api.endpoints.atc.voice.join :
+                config.api.endpoints.atc.voice.leave;
+
+            await utils.fetchAPI(endpoint, {
+                method: 'POST',
+                body: JSON.stringify({
+                    pilotId: auth.userInfo.id,
+                    frequency
+                })
+            });
+
+            joinVoiceBtn.textContent = isJoining ? 'Leave Channel' : 'Join Channel';
+            joinVoiceBtn.classList.toggle('bg-green-600');
+            joinVoiceBtn.classList.toggle('bg-red-600');
+
+            utils.showNotification(
+                `Successfully ${isJoining ? 'joined' : 'left'} voice channel`,
+                'success'
+            );
+        } catch (error) {
+            console.error('Error toggling voice channel:', error);
+            utils.showNotification('Failed to toggle voice channel', 'error');
+        }
+    }
+
+    // Update route field based on selected airports
+    function updateRouteField() {
+        const departure = document.getElementById('departure').value;
+        const arrival = document.getElementById('arrival').value;
+        const routeField = document.getElementById('route');
+
+        if (departure && arrival) {
+            const depAirport = config.airports[departure];
+            const arrAirport = config.airports[arrival];
+            
+            if (depAirport && arrAirport) {
+                routeField.value = `${departure} DCT ${arrival}`;
+            }
+        }
+    }
+
+    // Update flight assignment in list
+    function updateFlightAssignment(updatedFlight) {
+        const existingFlight = flightAssignments.querySelector(`[data-flight-id="${updatedFlight.id}"]`);
+        if (existingFlight) {
+            existingFlight.replaceWith(createFlightAssignmentElement(updatedFlight));
+        }
+    }
+
+    // Get current flight ID
+    function getCurrentFlightId() {
+        const flightNumberSelect = document.getElementById('flightNumber');
+        return flightNumberSelect.value;
+    }
+
+    // Update voice channel status
+    function updateVoiceChannelStatus(data) {
+        const frequency = document.getElementById('frequency');
+        if (data.frequency === frequency.value) {
+            joinVoiceBtn.textContent = data.userId === auth.userInfo.id ? 'Leave Channel' : 'Join Channel';
+            joinVoiceBtn.classList.toggle('bg-green-600', data.userId === auth.userInfo.id);
+            joinVoiceBtn.classList.toggle('bg-red-600', data.userId !== auth.userInfo.id);
+        }
+    }
+
+    // Initialize dashboard when auth state changes
+    auth.onAuthStateChanged = initDashboard;
+
+    // Initial dashboard setup
+    initDashboard();
 });
