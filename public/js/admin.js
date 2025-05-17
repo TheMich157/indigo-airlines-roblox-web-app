@@ -1,233 +1,347 @@
 // Admin Dashboard functionality
 document.addEventListener('DOMContentLoaded', () => {
-    // Check if user has admin access
-    if (!auth.isAuthenticated || !auth.hasRole('supervisor')) {
-        window.location.href = '/';
-        return;
-    }
-
     // DOM Elements
-    const flightCreationTab = document.getElementById('flightCreationTab');
-    const flightManagementTab = document.getElementById('flightManagementTab');
-    const userManagementTab = document.getElementById('userManagementTab');
-    
-    const flightCreationSection = document.getElementById('flightCreationSection');
-    const flightManagementSection = document.getElementById('flightManagementSection');
-    const userManagementSection = document.getElementById('userManagementSection');
+    const dashboardContent = document.getElementById('dashboardContent');
+    const accessDenied = document.getElementById('accessDenied');
+    const createFlightForm = document.getElementById('createFlightForm');
+    const flightSchedule = document.getElementById('flightSchedule');
+    const rankUpRequests = document.getElementById('rankUpRequests');
+    const systemLogs = document.getElementById('systemLogs');
+    const prevDayBtn = document.getElementById('prevDay');
+    const nextDayBtn = document.getElementById('nextDay');
+    const currentDateSpan = document.getElementById('currentDate');
 
-    // Tab switching functionality
-    function switchTab(tab, section) {
-        // Update tab styles
-        [flightCreationTab, flightManagementTab, userManagementTab].forEach(t => {
-            t.classList.remove('bg-indigo-secondary', 'text-white');
-            t.classList.add('text-gray-300', 'hover:bg-indigo-secondary', 'hover:text-white');
-        });
-        tab.classList.remove('text-gray-300', 'hover:bg-indigo-secondary', 'hover:text-white');
-        tab.classList.add('bg-indigo-secondary', 'text-white');
+    // Current date for schedule view
+    let currentDate = new Date();
 
-        // Show/hide sections
-        [flightCreationSection, flightManagementSection, userManagementSection].forEach(s => {
-            s.classList.add('hidden');
-        });
-        section.classList.remove('hidden');
-    }
+    // Socket.IO connection
+    let socket;
 
-    // Add tab click handlers
-    flightCreationTab.addEventListener('click', (e) => {
-        e.preventDefault();
-        switchTab(flightCreationTab, flightCreationSection);
-    });
-
-    flightManagementTab.addEventListener('click', (e) => {
-        e.preventDefault();
-        switchTab(flightManagementTab, flightManagementSection);
-        loadFlights();
-    });
-
-    userManagementTab.addEventListener('click', (e) => {
-        e.preventDefault();
-        switchTab(userManagementTab, userManagementSection);
-        loadUsers();
-    });
-
-    // Flight Creation Form Handler
-    const flightCreationForm = document.getElementById('flightCreationForm');
-    flightCreationForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
-
-        if (!utils.validateForm(flightCreationForm)) {
+    // Initialize dashboard
+    async function initDashboard() {
+        if (!auth.isAuthenticated || !auth.isSupervisor()) {
+            dashboardContent.classList.add('hidden');
+            accessDenied.classList.remove('hidden');
             return;
         }
 
-        const formData = {
-            flightNumber: document.getElementById('flightNumber').value,
-            aircraft: document.getElementById('aircraft').value,
-            departure: document.getElementById('departure').value,
-            arrival: document.getElementById('arrival').value,
-            departureTime: document.getElementById('departureTime').value,
-            arrivalTime: document.getElementById('arrivalTime').value,
-            captain: document.getElementById('captain').value,
-            firstOfficer: document.getElementById('firstOfficer').value
-        };
+        dashboardContent.classList.remove('hidden');
+        accessDenied.classList.add('hidden');
 
+        // Initialize Socket.IO
+        initializeSocket();
+
+        // Load initial data
+        await Promise.all([
+            loadSystemStats(),
+            loadFlightSchedule(),
+            loadRankUpRequests(),
+            loadSystemLogs(),
+            populateAirports(),
+            loadPilotsList()
+        ]);
+
+        // Set up event listeners
+        setupEventListeners();
+    }
+
+    // Initialize Socket.IO connection
+    function initializeSocket() {
+        socket = io(config.socket.url, config.socket.options);
+
+        socket.on('connect', () => {
+            console.log('Connected to server');
+        });
+
+        socket.on('flight_created', (flight) => {
+            updateFlightSchedule(flight);
+            utils.showNotification('New flight created', 'success');
+        });
+
+        socket.on('rank_up_requested', (request) => {
+            addRankUpRequest(request);
+            utils.showNotification('New rank up request received', 'info');
+        });
+
+        socket.on('system_log', (log) => {
+            addSystemLog(log);
+        });
+    }
+
+    // Load system statistics
+    async function loadSystemStats() {
         try {
-            await createFlight(formData);
-            utils.showNotification('Flight created successfully!', 'success');
-            flightCreationForm.reset();
+            const stats = await utils.fetchAPI('/api/admin/stats');
+            updateSystemStats(stats);
         } catch (error) {
-            utils.showNotification('Failed to create flight. Please try again.', 'error');
+            console.error('Error loading system stats:', error);
+            utils.showNotification('Failed to load system statistics', 'error');
         }
-    });
+    }
 
-    // Flight Management Functions
-    async function loadFlights() {
-        const tableBody = document.getElementById('flightTableBody');
-        tableBody.innerHTML = ''; // Clear existing rows
+    // Update system statistics display
+    function updateSystemStats(stats) {
+        document.getElementById('activeFlightsCount').textContent = stats.activeFlights;
+        document.getElementById('totalPilotsCount').textContent = stats.totalPilots;
+        document.getElementById('totalATCCount').textContent = stats.totalATC;
+        document.getElementById('todayFlightsCount').textContent = stats.todayFlights;
+    }
 
+    // Load flight schedule
+    async function loadFlightSchedule() {
         try {
-            const flights = await getFlights();
-            flights.forEach(flight => {
-                const row = document.createElement('tr');
-                row.innerHTML = `
-                    <td class="px-6 py-4 whitespace-nowrap">
-                        <div class="text-sm font-medium text-gray-900">${flight.flightNumber}</div>
-                        <div class="text-sm text-gray-500">${flight.aircraft}</div>
-                    </td>
-                    <td class="px-6 py-4 whitespace-nowrap">
-                        <div class="text-sm text-gray-900">${flight.departure} → ${flight.arrival}</div>
-                    </td>
-                    <td class="px-6 py-4 whitespace-nowrap">
-                        <div class="text-sm text-gray-900">${utils.formatDate(flight.departureTime)}</div>
-                        <div class="text-sm text-gray-500">${utils.formatDate(flight.arrivalTime)}</div>
-                    </td>
-                    <td class="px-6 py-4 whitespace-nowrap">
-                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                            flight.status === 'Scheduled' ? 'bg-green-100 text-green-800' :
-                            flight.status === 'In Progress' ? 'bg-yellow-100 text-yellow-800' :
-                            'bg-red-100 text-red-800'
-                        }">
-                            ${flight.status}
-                        </span>
-                    </td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                        <button onclick="editFlight('${flight.id}')" class="text-indigo-600 hover:text-indigo-900 mr-4">Edit</button>
-                        <button onclick="deleteFlight('${flight.id}')" class="text-red-600 hover:text-red-900">Delete</button>
-                    </td>
-                `;
-                tableBody.appendChild(row);
+            const date = currentDate.toISOString().split('T')[0];
+            const flights = await utils.fetchAPI(`/api/flights/schedule?date=${date}`);
+            displayFlightSchedule(flights);
+            updateCurrentDateDisplay();
+        } catch (error) {
+            console.error('Error loading flight schedule:', error);
+            utils.showNotification('Failed to load flight schedule', 'error');
+        }
+    }
+
+    // Display flight schedule
+    function displayFlightSchedule(flights) {
+        flightSchedule.innerHTML = '';
+        flights.forEach(flight => {
+            const flightElement = createFlightElement(flight);
+            flightSchedule.appendChild(flightElement);
+        });
+    }
+
+    // Create flight element
+    function createFlightElement(flight) {
+        const div = document.createElement('div');
+        div.className = 'bg-gray-50 p-4 rounded-md';
+        div.innerHTML = `
+            <div class="flex justify-between items-center">
+                <div>
+                    <p class="text-lg font-semibold">${flight.flightNumber}</p>
+                    <p class="text-sm text-gray-500">${flight.departure} → ${flight.arrival}</p>
+                    <p class="text-sm text-gray-500">${utils.formatDate(flight.departureTime)}</p>
+                </div>
+                <div class="flex items-center space-x-2">
+                    <button onclick="editFlight('${flight.id}')" class="p-2 text-blue-600 hover:text-blue-800">
+                        <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+                        </svg>
+                    </button>
+                    <button onclick="deleteFlight('${flight.id}')" class="p-2 text-red-600 hover:text-red-800">
+                        <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        `;
+        return div;
+    }
+
+    // Load rank up requests
+    async function loadRankUpRequests() {
+        try {
+            const requests = await utils.fetchAPI('/api/admin/rank-up-requests');
+            displayRankUpRequests(requests);
+        } catch (error) {
+            console.error('Error loading rank up requests:', error);
+            utils.showNotification('Failed to load rank up requests', 'error');
+        }
+    }
+
+    // Display rank up requests
+    function displayRankUpRequests(requests) {
+        rankUpRequests.innerHTML = '';
+        requests.forEach(request => {
+            const requestElement = createRankUpRequestElement(request);
+            rankUpRequests.appendChild(requestElement);
+        });
+    }
+
+    // Create rank up request element
+    function createRankUpRequestElement(request) {
+        const div = document.createElement('div');
+        div.className = 'bg-gray-50 p-4 rounded-md';
+        div.innerHTML = `
+            <div class="flex justify-between items-center">
+                <div>
+                    <p class="text-lg font-semibold">${request.pilotName}</p>
+                    <p class="text-sm text-gray-500">Current Rank: ${request.currentRank}</p>
+                    <p class="text-sm text-gray-500">Total Mileage: ${request.totalMileage} nm</p>
+                </div>
+                <div class="flex space-x-2">
+                    <button onclick="approveRankUp('${request.id}')" class="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700">
+                        Approve
+                    </button>
+                    <button onclick="denyRankUp('${request.id}')" class="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700">
+                        Deny
+                    </button>
+                </div>
+            </div>
+        `;
+        return div;
+    }
+
+    // Load system logs
+    async function loadSystemLogs() {
+        try {
+            const logs = await utils.fetchAPI('/api/admin/logs');
+            displaySystemLogs(logs);
+        } catch (error) {
+            console.error('Error loading system logs:', error);
+            utils.showNotification('Failed to load system logs', 'error');
+        }
+    }
+
+    // Display system logs
+    function displaySystemLogs(logs) {
+        systemLogs.innerHTML = '';
+        logs.forEach(log => {
+            const logElement = createLogElement(log);
+            systemLogs.appendChild(logElement);
+        });
+    }
+
+    // Create log element
+    function createLogElement(log) {
+        const div = document.createElement('div');
+        div.className = 'bg-gray-50 p-4 rounded-md';
+        div.innerHTML = `
+            <p class="text-sm text-gray-500">${utils.formatDate(log.timestamp)}</p>
+            <p class="font-medium">${log.message}</p>
+            <p class="text-sm text-gray-500">${log.type} - ${log.user}</p>
+        `;
+        return div;
+    }
+
+    // Populate airports in flight creation form
+    function populateAirports() {
+        const departureSelect = document.getElementById('departure');
+        const arrivalSelect = document.getElementById('arrival');
+
+        departureSelect.innerHTML = '<option value="">Select airport</option>';
+        arrivalSelect.innerHTML = '<option value="">Select airport</option>';
+
+        Object.entries(config.airports).forEach(([code, airport]) => {
+            const option = document.createElement('option');
+            option.value = code;
+            option.textContent = `${airport.city} (${code})`;
+            
+            departureSelect.appendChild(option.cloneNode(true));
+            arrivalSelect.appendChild(option.cloneNode(true));
+        });
+    }
+
+    // Load pilots list for assignment
+    async function loadPilotsList() {
+        try {
+            const pilots = await utils.fetchAPI('/api/admin/pilots');
+            populatePilotSelects(pilots);
+        } catch (error) {
+            console.error('Error loading pilots list:', error);
+            utils.showNotification('Failed to load pilots list', 'error');
+        }
+    }
+
+    // Populate pilot selection dropdowns
+    function populatePilotSelects(pilots) {
+        const pilotSelect = document.getElementById('assignPilot');
+        const foSelect = document.getElementById('assignFirstOfficer');
+
+        pilots.forEach(pilot => {
+            const option = document.createElement('option');
+            option.value = pilot.id;
+            option.textContent = `${pilot.name} (${pilot.rank})`;
+            
+            if (pilot.rank.includes('Captain')) {
+                pilotSelect.appendChild(option.cloneNode(true));
+            } else if (pilot.rank.includes('First Officer')) {
+                foSelect.appendChild(option.cloneNode(true));
+            }
+        });
+    }
+
+    // Set up event listeners
+    function setupEventListeners() {
+        // Create flight form submission
+        createFlightForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            await createFlight();
+        });
+
+        // Date navigation
+        prevDayBtn.addEventListener('click', () => {
+            currentDate.setDate(currentDate.getDate() - 1);
+            loadFlightSchedule();
+        });
+
+        nextDayBtn.addEventListener('click', () => {
+            currentDate.setDate(currentDate.getDate() + 1);
+            loadFlightSchedule();
+        });
+    }
+
+    // Create new flight
+    async function createFlight() {
+        try {
+            const formData = new FormData(createFlightForm);
+            const flightData = {
+                flightNumber: `6E${formData.get('flightNumber')}`,
+                departure: formData.get('departure'),
+                arrival: formData.get('arrival'),
+                departureTime: formData.get('departureTime'),
+                aircraft: formData.get('aircraft'),
+                pilot: formData.get('assignPilot') || null,
+                firstOfficer: formData.get('assignFirstOfficer') || null
+            };
+
+            const response = await utils.fetchAPI('/api/flights/create', {
+                method: 'POST',
+                body: JSON.stringify(flightData)
             });
+
+            utils.showNotification('Flight created successfully', 'success');
+            createFlightForm.reset();
+            updateFlightSchedule(response);
         } catch (error) {
-            utils.showNotification('Failed to load flights', 'error');
+            console.error('Error creating flight:', error);
+            utils.showNotification('Failed to create flight', 'error');
         }
     }
 
-    // User Management Functions
-    async function loadUsers() {
-        const tableBody = document.getElementById('userTableBody');
-        tableBody.innerHTML = ''; // Clear existing rows
+    // Update current date display
+    function updateCurrentDateDisplay() {
+        currentDateSpan.textContent = currentDate.toLocaleDateString('en-US', {
+            weekday: 'long',
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric'
+        });
+    }
 
-        try {
-            const users = await getUsers();
-            users.forEach(user => {
-                const row = document.createElement('tr');
-                row.innerHTML = `
-                    <td class="px-6 py-4 whitespace-nowrap">
-                        <div class="text-sm font-medium text-gray-900">${user.username}</div>
-                    </td>
-                    <td class="px-6 py-4 whitespace-nowrap">
-                        <div class="text-sm text-gray-900">${user.role}</div>
-                    </td>
-                    <td class="px-6 py-4 whitespace-nowrap">
-                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                            user.status === 'Active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                        }">
-                            ${user.status}
-                        </span>
-                    </td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                        <button onclick="editUser('${user.id}')" class="text-indigo-600 hover:text-indigo-900 mr-4">Edit</button>
-                        <button onclick="toggleUserStatus('${user.id}')" class="text-yellow-600 hover:text-yellow-900">Toggle Status</button>
-                    </td>
-                `;
-                tableBody.appendChild(row);
-            });
-        } catch (error) {
-            utils.showNotification('Failed to load users', 'error');
+    // Update flight schedule with new flight
+    function updateFlightSchedule(flight) {
+        const flightDate = new Date(flight.departureTime).toDateString();
+        if (flightDate === currentDate.toDateString()) {
+            const flightElement = createFlightElement(flight);
+            flightSchedule.appendChild(flightElement);
         }
     }
 
-    // API Functions (to be implemented with actual backend)
-    async function createFlight(flightData) {
-        // TODO: Implement actual API call
-        return new Promise((resolve) => {
-            setTimeout(() => {
-                console.log('Flight created:', flightData);
-                resolve();
-            }, 1000);
-        });
+    // Add rank up request to list
+    function addRankUpRequest(request) {
+        const requestElement = createRankUpRequestElement(request);
+        rankUpRequests.insertBefore(requestElement, rankUpRequests.firstChild);
     }
 
-    async function getFlights() {
-        // TODO: Implement actual API call
-        return new Promise((resolve) => {
-            setTimeout(() => {
-                resolve([
-                    {
-                        id: '1',
-                        flightNumber: '6E-123',
-                        aircraft: 'A320',
-                        departure: 'COK',
-                        arrival: 'BOM',
-                        departureTime: '2024-02-20T10:00',
-                        arrivalTime: '2024-02-20T12:00',
-                        status: 'Scheduled'
-                    },
-                    // Add more mock flights as needed
-                ]);
-            }, 1000);
-        });
+    // Add system log entry
+    function addSystemLog(log) {
+        const logElement = createLogElement(log);
+        systemLogs.insertBefore(logElement, systemLogs.firstChild);
     }
 
-    async function getUsers() {
-        // TODO: Implement actual API call
-        return new Promise((resolve) => {
-            setTimeout(() => {
-                resolve([
-                    {
-                        id: '1',
-                        username: 'JohnDoe',
-                        role: 'Pilot',
-                        status: 'Active'
-                    },
-                    // Add more mock users as needed
-                ]);
-            }, 1000);
-        });
-    }
+    // Initialize dashboard when auth state changes
+    auth.onAuthStateChanged = initDashboard;
 
-    // Initialize dashboard
-    switchTab(flightCreationTab, flightCreationSection);
+    // Initial dashboard setup
+    initDashboard();
 });
-
-// Global functions for table actions
-window.editFlight = function(flightId) {
-    // TODO: Implement flight editing
-    console.log('Editing flight:', flightId);
-};
-
-window.deleteFlight = function(flightId) {
-    if (confirm('Are you sure you want to delete this flight?')) {
-        // TODO: Implement flight deletion
-        console.log('Deleting flight:', flightId);
-    }
-};
-
-window.editUser = function(userId) {
-    // TODO: Implement user editing
-    console.log('Editing user:', userId);
-};
-
-window.toggleUserStatus = function(userId) {
-    // TODO: Implement user status toggle
-    console.log('Toggling user status:', userId);
-};
