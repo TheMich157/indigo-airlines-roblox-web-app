@@ -221,18 +221,48 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('arrival').addEventListener('change', updateRouteField);
     }
 
-    // Submit flight plan
+    // Submit flight plan with validation
     async function submitFlightPlan() {
         try {
             const formData = new FormData(flightPlanForm);
+            
+            // Validate form data
+            const validationErrors = validateFlightPlan(formData);
+            if (validationErrors.length > 0) {
+                utils.showNotification(validationErrors[0], 'error');
+                return;
+            }
+
+            // Check for minimum rank requirements
+            const aircraft = formData.get('aircraft');
+            const hasRequiredRank = await checkAircraftRankRequirement(aircraft);
+            if (!hasRequiredRank) {
+                utils.showNotification('Your current rank does not allow you to fly this aircraft', 'error');
+                return;
+            }
+
+            // Check for active flight limit
+            const hasActiveFlightLimit = await checkActiveFlightLimit();
+            if (hasActiveFlightLimit) {
+                utils.showNotification('You have reached the maximum number of active flights', 'error');
+                return;
+            }
+
             const flightPlan = {
                 flightId: formData.get('flightNumber'),
                 departure: formData.get('departure'),
                 arrival: formData.get('arrival'),
-                aircraft: formData.get('aircraft'),
-                cruisingAltitude: formData.get('cruisingAltitude'),
+                aircraft: aircraft,
+                cruisingAltitude: parseInt(formData.get('cruisingAltitude')),
                 route: formData.get('route'),
-                pilotId: auth.userInfo.id
+                pilotId: auth.userInfo.id,
+                alternateAirports: calculateAlternateAirports(formData.get('departure'), formData.get('arrival')),
+                estimatedDuration: calculateFlightDuration(
+                    formData.get('departure'),
+                    formData.get('arrival'),
+                    aircraft,
+                    parseInt(formData.get('cruisingAltitude'))
+                )
             };
 
             const response = await utils.fetchAPI(config.api.endpoints.pilot.flightPlan, {
@@ -242,15 +272,150 @@ document.addEventListener('DOMContentLoaded', () => {
 
             utils.showNotification('Flight plan submitted successfully', 'success');
             flightPlanForm.reset();
+            
+            // Add to activity log
             addActivityLogEntry({
                 type: 'flight_plan',
                 message: `Flight plan submitted for ${response.flightNumber}`,
-                timestamp: new Date()
+                timestamp: new Date(),
+                details: {
+                    route: flightPlan.route,
+                    duration: flightPlan.estimatedDuration,
+                    alternates: flightPlan.alternateAirports
+                }
             });
+
+            // Update flight assignments
+            await loadFlightAssignments();
+            
         } catch (error) {
             console.error('Error submitting flight plan:', error);
             utils.showNotification('Failed to submit flight plan', 'error');
         }
+    }
+
+    // Validate flight plan data
+    function validateFlightPlan(formData) {
+        const errors = [];
+        
+        if (!formData.get('flightNumber')) {
+            errors.push('Please select a flight');
+        }
+        
+        if (!formData.get('departure')) {
+            errors.push('Please select departure airport');
+        }
+        
+        if (!formData.get('arrival')) {
+            errors.push('Please select arrival airport');
+        }
+        
+        if (formData.get('departure') === formData.get('arrival')) {
+            errors.push('Departure and arrival airports cannot be the same');
+        }
+        
+        const altitude = parseInt(formData.get('cruisingAltitude'));
+        if (!altitude || altitude < 10000 || altitude > 40000) {
+            errors.push('Invalid cruising altitude (must be between 10,000 and 40,000 ft)');
+        }
+        
+        if (!formData.get('route')) {
+            errors.push('Please specify a route');
+        }
+
+        return errors;
+    }
+
+    // Check aircraft rank requirement
+    async function checkAircraftRankRequirement(aircraft) {
+        try {
+            const response = await utils.fetchAPI(`${config.api.endpoints.pilot.checkRank}?aircraft=${aircraft}`);
+            return response.hasRequiredRank;
+        } catch (error) {
+            console.error('Error checking rank requirement:', error);
+            return false;
+        }
+    }
+
+    // Check active flight limit
+    async function checkActiveFlightLimit() {
+        try {
+            const response = await utils.fetchAPI(config.api.endpoints.pilot.activeFlights);
+            return response.activeFlights >= config.maxConcurrentFlights;
+        } catch (error) {
+            console.error('Error checking active flight limit:', error);
+            return true;
+        }
+    }
+
+    // Calculate alternate airports
+    function calculateAlternateAirports(departure, arrival) {
+        const alternates = [];
+        const depAirport = config.airports[departure];
+        const arrAirport = config.airports[arrival];
+
+        // Find nearest airports to destination
+        Object.entries(config.airports).forEach(([code, airport]) => {
+            if (code !== departure && code !== arrival) {
+                const distance = calculateDistance(
+                    arrAirport.latitude,
+                    arrAirport.longitude,
+                    airport.latitude,
+                    airport.longitude
+                );
+                if (distance <= 200) { // Within 200nm
+                    alternates.push(code);
+                }
+            }
+        });
+
+        // Sort by distance and return top 2
+        return alternates.slice(0, 2);
+    }
+
+    // Calculate flight duration
+    function calculateFlightDuration(departure, arrival, aircraft, altitude) {
+        const depAirport = config.airports[departure];
+        const arrAirport = config.airports[arrival];
+        
+        // Calculate distance
+        const distance = calculateDistance(
+            depAirport.latitude,
+            depAirport.longitude,
+            arrAirport.latitude,
+            arrAirport.longitude
+        );
+
+        // Get aircraft cruise speed
+        const cruiseSpeed = config.aircraft[aircraft].cruiseSpeed;
+
+        // Calculate basic duration
+        let duration = (distance / cruiseSpeed) * 60; // Convert to minutes
+
+        // Add time for climb and descent
+        duration += 15; // Climb
+        duration += 15; // Descent
+
+        return Math.round(duration);
+    }
+
+    // Calculate distance between coordinates using Haversine formula
+    function calculateDistance(lat1, lon1, lat2, lon2) {
+        const R = 3440.065; // Earth radius in nautical miles
+        const dLat = toRad(lat2 - lat1);
+        const dLon = toRad(lon2 - lon1);
+        
+        const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * 
+                Math.sin(dLon/2) * Math.sin(dLon/2);
+        
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        return R * c;
+    }
+
+    // Convert degrees to radians
+    function toRad(deg) {
+        return deg * (Math.PI/180);
     }
 
     // Toggle voice channel
