@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard - 6E | IndiGo Airlines</title>
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        indigo: {
+                            primary: '#012A5E',
+                            secondary: '#0B42AB'
+                        }
+                    },
+                    fontFamily: {
+                        'inter': ['Inter', 'sans-serif']
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="font-inter bg-gray-50">
+    <!-- Navigation -->
+    <nav class="bg-white shadow-md">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <div class="flex">
+                    <div class="flex-shrink-0 flex items-center">
+                        <a href="/" class="text-2xl font-bold text-indigo-primary">6E | IndiGo</a>
+                    </div>
+                    <div class="hidden sm:ml-6 sm:flex sm:space-x-8">
+                        <a href="/" class="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
+                            Home
+                        </a>
+                        <a href="/admin-dashboard.html" class="border-indigo-primary text-gray-900 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
+                            Admin Dashboard
+                        </a>
+                    </div>
+                </div>
+                <div class="hidden sm:ml-6 sm:flex sm:items-center">
+                    <button id="loginBtn" class="bg-indigo-primary text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-indigo-secondary focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-primary">
+                        Login with Roblox
+                    </button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="min-h-screen">
+        <!-- Sidebar -->
+        <div class="fixed inset-y-0 left-0 w-64 bg-indigo-primary transform -translate-x-full md:relative md:translate-x-0 transition duration-200 ease-in-out">
+            <div class="h-full flex flex-col">
+                <div class="h-16 flex items-center justify-center">
+                    <h2 class="text-white text-lg font-semibold">Admin Controls</h2>
+                </div>
+                <nav class="flex-1 px-2 py-4 space-y-1">
+                    <a href="#" class="bg-indigo-secondary text-white group flex items-center px-2 py-2 text-sm font-medium rounded-md" id="flightCreationTab">
+                        Flight Creation
+                    </a>
+                    <a href="#" class="text-gray-300 hover:bg-indigo-secondary hover:text-white group flex items-center px-2 py-2 text-sm font-medium rounded-md" id="flightManagementTab">
+                        Flight Management
+                    </a>
+                    <a href="#" class="text-gray-300 hover:bg-indigo-secondary hover:text-white group flex items-center px-2 py-2 text-sm font-medium rounded-md" id="userManagementTab">
+                        User Management
+                    </a>
+                </nav>
+            </div>
+        </div>
+
+        <!-- Content Area -->
+        <div class="md:pl-64">
+            <main class="py-6">
+                <!-- Flight Creation Section -->
+                <div id="flightCreationSection" class="max-w-7xl mx-auto px-4 sm:px-6 md:px-8">
+                    <div class="bg-white shadow sm:rounded-lg">
+                        <div class="px-4 py-5 sm:p-6">
+                            <h3 class="text-lg leading-6 font-medium text-gray-900">Create New Flight</h3>
+                            <form id="flightCreationForm" class="mt-5 space-y-6">
+                                <div class="grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-2">
+                                    <div>
+                                        <label for="flightNumber" class="block text-sm font-medium text-gray-700">Flight Number</label>
+                                        <input type="text" name="flightNumber" id="flightNumber" class="mt-1 focus:ring-indigo-primary focus:border-indigo-primary block w-full shadow-sm sm:text-sm border-gray-300 rounded-md" required>
+                                    </div>
+
+                                    <div>
+                                        <label for="aircraft" class="block text-sm font-medium text-gray-700">Aircraft Type</label>
+                                        <select id="aircraft" name="aircraft" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-primary focus:border-indigo-primary sm:text-sm rounded-md" required>
+                                            <option value="">Select aircraft</option>
+                                            <option value="A320">Airbus A320</option>
+                                            <option value="A330">Airbus A330</option>
+                                        </select>
+                                    </div>
+
+                                    <div>
+                                        <label for="departure" class="block text-sm font-medium text-gray-700">Departure Airport</label>
+                                        <select id="departure" name="departure" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-primary focus:border-indigo-primary sm:text-sm rounded-md" required>
+                                            <option value="">Select departure</option>
+                                            <option value="COK">Cochin (COK)</option>
+                                            <option value="BLR">Bangalore (BLR)</option>
+                                            <option value="DEL">Delhi (DEL)</option>
+                                        </select>
+                                    </div>
+
+                                    <div>
+                                        <label for="arrival" class="block text-sm font-medium text-gray-700">Arrival Airport</label>
+                                        <select id="arrival" name="arrival" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-primary focus:border-indigo-primary sm:text-sm rounded-md" required>
+                                            <option value="">Select arrival</option>
+                                            <option value="BOM">Mumbai (BOM)</option>
+                                            <option value="MAA">Chennai (MAA)</option>
+                                            <option value="HYD">Hyderabad (HYD)</option>
+                                        </select>
+                                    </div>
+
+                                    <div>
+                                        <label for="departureTime" class="block text-sm font-medium text-gray-700">Departure Time</label>
+                                        <input type="datetime-local" name="departureTime" id="departureTime" class="mt-1 focus:ring-indigo-primary focus:border-indigo-primary block w-full shadow-sm sm:text-sm border-gray-300 rounded-md" required>
+                                    </div>
+
+                                    <div>
+                                        <label for="arrivalTime" class="block text-sm font-medium text-gray-700">Arrival Time</label>
+                                        <input type="datetime-local" name="arrivalTime" id="arrivalTime" class="mt-1 focus:ring-indigo-primary focus:border-indigo-primary block w-full shadow-sm sm:text-sm border-gray-300 rounded-md" required>
+                                    </div>
+
+                                    <div class="sm:col-span-2">
+                                        <label for="crew" class="block text-sm font-medium text-gray-700">Assign Crew (Optional)</label>
+                                        <div class="mt-1 flex space-x-4">
+                                            <input type="text" name="captain" id="captain" placeholder="Captain" class="focus:ring-indigo-primary focus:border-indigo-primary block w-full shadow-sm sm:text-sm border-gray-300 rounded-md">
+                                            <input type="text" name="firstOfficer" id="firstOfficer" placeholder="First Officer" class="focus:ring-indigo-primary focus:border-indigo-primary block w-full shadow-sm sm:text-sm border-gray-300 rounded-md">
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="flex justify-end">
+                                    <button type="submit" class="ml-3 inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-primary hover:bg-indigo-secondary focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-primary">
+                                        Create Flight
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Flight Management Section -->
+                <div id="flightManagementSection" class="hidden max-w-7xl mx-auto px-4 sm:px-6 md:px-8">
+                    <div class="bg-white shadow sm:rounded-lg">
+                        <div class="px-4 py-5 sm:p-6">
+                            <h3 class="text-lg leading-6 font-medium text-gray-900">Manage Flights</h3>
+                            <div class="mt-5">
+                                <table class="min-w-full divide-y divide-gray-200">
+                                    <thead class="bg-gray-50">
+                                        <tr>
+                                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Flight</th>
+                                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Route</th>
+                                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Schedule</th>
+                                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="bg-white divide-y divide-gray-200" id="flightTableBody">
+                                        <!-- Populated by admin.js -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- User Management Section -->
+                <div id="userManagementSection" class="hidden max-w-7xl mx-auto px-4 sm:px-6 md:px-8">
+                    <div class="bg-white shadow sm:rounded-lg">
+                        <div class="px-4 py-5 sm:p-6">
+                            <h3 class="text-lg leading-6 font-medium text-gray-900">Manage Users</h3>
+                            <div class="mt-5">
+                                <table class="min-w-full divide-y divide-gray-200">
+                                    <thead class="bg-gray-50">
+                                        <tr>
+                                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Username</th>
+                                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
+                                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="bg-white divide-y divide-gray-200" id="userTableBody">
+                                        <!-- Populated by admin.js -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="js/auth.js"></script>
+    <script src="js/script.js"></script>
+    <script src="js/admin.js"></script>
+</body>
+</html>
