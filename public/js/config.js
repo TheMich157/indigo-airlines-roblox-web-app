@@ -1,33 +1,57 @@
-// Configuration for the IndiGo Airlines website
-
+// Application configuration
 const config = {
     // API endpoints
     api: {
         base: '/api',
-        auth: {
-            login: '/auth/login',
-            verify: '/auth/verify-gamepass',
-            profile: '/auth/profile'
-        },
-        flights: {
-            list: '/flights',
-            search: '/flights/search',
-            stats: '/flights/stats/overview'
-        },
-        bookings: {
-            create: '/bookings',
-            list: '/bookings/user',
-            availability: '/bookings/availability'
-        },
-        atc: {
-            clearance: '/atc/clearance',
-            weather: '/atc/weather',
-            voice: '/atc/voice'
-        },
-        pilot: {
-            logs: '/pilot/logs',
-            stats: '/pilot/profile',
-            rankUp: '/pilot/rank-up'
+        endpoints: {
+            // Auth endpoints
+            auth: {
+                login: '/auth/login',
+                logout: '/auth/logout',
+                verify: '/auth/verify',
+                checkGamepass: '/auth/check-gamepass'
+            },
+            // Booking endpoints
+            booking: {
+                create: '/bookings/create',
+                get: '/bookings/get',
+                cancel: '/bookings/cancel',
+                seats: '/bookings/seats'
+            },
+            // Flight endpoints
+            flights: {
+                create: '/flights/create',
+                list: '/flights/list',
+                update: '/flights/update',
+                delete: '/flights/delete'
+            },
+            // ATC endpoints
+            atc: {
+                clearance: '/atc/clearance',
+                weather: '/atc/weather',
+                activeFlights: '/atc/active-flights',
+                flightStatus: '/atc/flight-status',
+                delay: '/atc/delay',
+                voice: {
+                    join: '/atc/voice/join',
+                    leave: '/atc/voice/leave'
+                }
+            },
+            // Pilot endpoints
+            pilot: {
+                flightPlan: '/pilot/flight-plan',
+                mileage: '/pilot/mileage',
+                rankUp: '/pilot/rank-up'
+            }
+        }
+    },
+
+    // Socket.IO configuration
+    socket: {
+        url: window.location.origin,
+        options: {
+            transports: ['websocket'],
+            autoConnect: true
         }
     },
 
@@ -35,113 +59,152 @@ const config = {
     aircraft: {
         A320: {
             name: 'Airbus A320',
-            capacity: {
-                economy: 162,
-                business: 18
-            },
-            range: 6100, // km
-            cruisingSpeed: 828, // km/h
-            seatMap: {
-                rows: 30,
-                businessRows: 3,
-                seatsPerRow: 6
+            seating: {
+                business: {
+                    rows: 2,
+                    seatsPerRow: 6,
+                    price: 12000 // INR
+                },
+                economy: {
+                    rows: 30,
+                    seatsPerRow: 6,
+                    price: 5000 // INR
+                }
             }
         },
         A330: {
             name: 'Airbus A330',
-            capacity: {
-                economy: 268,
-                business: 32
-            },
-            range: 11750, // km
-            cruisingSpeed: 871, // km/h
-            seatMap: {
-                rows: 40,
-                businessRows: 5,
-                seatsPerRow: 8
+            seating: {
+                business: {
+                    rows: 3,
+                    seatsPerRow: 8,
+                    price: 15000 // INR
+                },
+                economy: {
+                    rows: 41,
+                    seatsPerRow: 8,
+                    price: 7000 // INR
+                }
             }
         }
     },
 
-    // Radio frequencies
-    frequencies: {
-        ground: '121.9',
-        tower: '118.1',
-        approach: '119.1',
-        departure: '125.2'
-    },
-
-    // Pilot ranks and requirements
-    ranks: {
-        'First Officer': {
-            miles: 5000,
-            flights: 20,
-            nextRank: 'Senior First Officer'
-        },
-        'Senior First Officer': {
-            miles: 15000,
-            flights: 50,
-            nextRank: 'Captain'
-        },
-        'Captain': {
-            miles: 30000,
-            flights: 100,
-            nextRank: null
-        }
-    },
-
-    // Airports served
+    // Airport routes
     airports: {
+        COK: {
+            name: 'Cochin International Airport',
+            code: 'COK',
+            city: 'Kochi',
+            coordinates: {
+                lat: 10.1520,
+                lng: 76.3919
+            }
+        },
+        BLR: {
+            name: 'Kempegowda International Airport',
+            code: 'BLR',
+            city: 'Bangalore',
+            coordinates: {
+                lat: 13.1986,
+                lng: 77.7066
+            }
+        },
         DEL: {
-            name: 'Delhi',
+            name: 'Indira Gandhi International Airport',
             code: 'DEL',
-            fullName: 'Indira Gandhi International Airport',
-            coordinates: { lat: 28.5562, lon: 77.1000 }
+            city: 'Delhi',
+            coordinates: {
+                lat: 28.5562,
+                lng: 77.1000
+            }
         },
         BOM: {
-            name: 'Mumbai',
+            name: 'Chhatrapati Shivaji Maharaj International Airport',
             code: 'BOM',
-            fullName: 'Chhatrapati Shivaji Maharaj International Airport',
-            coordinates: { lat: 19.0896, lon: 72.8656 }
+            city: 'Mumbai',
+            coordinates: {
+                lat: 19.0896,
+                lng: 72.8656
+            }
         },
         MAA: {
-            name: 'Chennai',
+            name: 'Chennai International Airport',
             code: 'MAA',
-            fullName: 'Chennai International Airport',
-            coordinates: { lat: 12.9941, lon: 80.1709 }
+            city: 'Chennai',
+            coordinates: {
+                lat: 12.9941,
+                lng: 80.1709
+            }
         },
-        COK: {
-            name: 'Kochi',
-            code: 'COK',
-            fullName: 'Cochin International Airport',
-            coordinates: { lat: 10.1520, lon: 76.3916 }
+        HYD: {
+            name: 'Rajiv Gandhi International Airport',
+            code: 'HYD',
+            city: 'Hyderabad',
+            coordinates: {
+                lat: 17.2403,
+                lng: 78.4294
+            }
         }
     },
 
-    // Pricing configuration
-    pricing: {
-        basePrice: 2000, // Base price in INR
-        businessMultiplier: 2.5, // Business class price multiplier
-        distanceRate: 3, // Price per km
-        taxes: 0.18 // 18% tax rate
+    // ATC clearance types
+    clearanceTypes: [
+        'ATC Clearance',
+        'Takeoff Clearance',
+        'Landing Clearance',
+        'Taxi Clearance',
+        'Pushback Clearance',
+        'Climb Clearance',
+        'Descent Clearance',
+        'Enroute Clearance',
+        'Crossing Clearance',
+        'Approach Clearance',
+        'Holding Clearance',
+        'Departure Clearance',
+        'VFR Flight Following',
+        'Special Use Airspace Clearance',
+        'Oceanic Clearance'
+    ],
+
+    // Flight statuses
+    flightStatuses: {
+        SCHEDULED: 'scheduled',
+        BOARDING: 'boarding',
+        DEPARTED: 'departed',
+        ARRIVED: 'arrived',
+        DELAYED: 'delayed',
+        CANCELLED: 'cancelled'
     },
 
-    // Notification settings
-    notifications: {
-        duration: 3000, // Duration in milliseconds
-        position: 'bottom-right'
+    // User roles
+    roles: {
+        USER: 'user',
+        PILOT: 'pilot',
+        FIRST_OFFICER: 'first_officer',
+        ATC: 'atc',
+        SUPERVISOR: 'supervisor',
+        ADMIN: 'admin'
     },
 
-    // Voice chat settings
-    voiceChat: {
-        sampleRate: 48000,
-        channels: 1,
-        quality: 'high'
-    },
+    // Pilot ranks and required mileage
+    pilotRanks: [
+        { name: 'Trainee', mileage: 0 },
+        { name: 'Junior First Officer', mileage: 100 },
+        { name: 'First Officer', mileage: 500 },
+        { name: 'Senior First Officer', mileage: 1000 },
+        { name: 'Captain', mileage: 2000 },
+        { name: 'Senior Captain', mileage: 5000 }
+    ],
 
-    // Weather update interval (in milliseconds)
-    weatherUpdateInterval: 300000, // 5 minutes
+    // Voice channel frequencies
+    voiceChannels: {
+        GROUND: '121.5',
+        TOWER: '118.1',
+        APPROACH: '119.1',
+        DEPARTURE: '125.2',
+        CENTER: '127.4'
+    }
 };
 
-// Export config for use in other files
+// Export config for use in other modules
 window.config = config;
