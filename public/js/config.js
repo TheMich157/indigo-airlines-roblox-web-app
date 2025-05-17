@@ -46,12 +46,16 @@ const config = {
         }
     },
 
-    // Roblox integration
+    // Roblox OAuth configuration
     roblox: {
+        clientId: '3648394662667475736',
+        clientSecret: 'RBX-dDxbVm50LUurB-TxA4cBOkO5GkxEdWGpJGIULLyHxtK6mVruj_C3qNTu3m55ok7B',
+        redirectUri: 'http://localhost:8000/auth/callback',
         origin: 'https://www.roblox.com',
         loginUrl: 'https://www.roblox.com/login',
         groupId: '12345678',
-        gameId: '87654321'
+        gameId: '87654321',
+        scope: 'openid profile'
     },
 
     // Social links
