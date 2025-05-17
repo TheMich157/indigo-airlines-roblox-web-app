@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pilot Dashboard - 6E | IndiGo Airlines</title>
+    <title>Pilot Dashboard - IndiGo Airlines</title>
     
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -43,6 +43,12 @@
                         <a href="/" class="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
                             Home
                         </a>
+                        <a href="/booking.html" class="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
+                            Book Flight
+                        </a>
+                        <a href="/atc-dashboard.html" class="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
+                            ATC Dashboard
+                        </a>
                         <a href="/pilot-dashboard.html" class="border-indigo-primary text-gray-900 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
                             Pilot Dashboard
                         </a>
@@ -75,18 +81,19 @@
             <!-- Pilot Stats -->
             <div class="bg-white shadow rounded-lg mb-6">
                 <div class="px-4 py-5 sm:p-6">
+                    <h3 class="text-lg font-medium text-gray-900 mb-4">Pilot Statistics</h3>
                     <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                        <div>
-                            <h3 class="text-lg font-medium text-gray-900">Current Rank</h3>
-                            <p id="currentRank" class="mt-1 text-3xl font-semibold text-indigo-primary">Loading...</p>
+                        <div class="bg-gray-50 p-4 rounded-lg">
+                            <h4 class="text-sm font-medium text-gray-500">Current Rank</h4>
+                            <p id="currentRank" class="mt-1 text-lg font-semibold text-gray-900">Loading...</p>
                         </div>
-                        <div>
-                            <h3 class="text-lg font-medium text-gray-900">Total Mileage</h3>
-                            <p id="totalMileage" class="mt-1 text-3xl font-semibold text-indigo-primary">Loading...</p>
+                        <div class="bg-gray-50 p-4 rounded-lg">
+                            <h4 class="text-sm font-medium text-gray-500">Total Mileage</h4>
+                            <p id="totalMileage" class="mt-1 text-lg font-semibold text-gray-900">Loading...</p>
                         </div>
-                        <div>
-                            <h3 class="text-lg font-medium text-gray-900">Next Rank</h3>
-                            <p id="nextRank" class="mt-1 text-3xl font-semibold text-indigo-primary">Loading...</p>
+                        <div class="bg-gray-50 p-4 rounded-lg">
+                            <h4 class="text-sm font-medium text-gray-500">Next Rank</h4>
+                            <p id="nextRank" class="mt-1 text-lg font-semibold text-gray-900">Loading...</p>
                             <div class="mt-2 w-full bg-gray-200 rounded-full h-2">
                                 <div id="rankProgress" class="bg-indigo-primary rounded-full h-2" style="width: 0%"></div>
                             </div>
@@ -95,113 +102,88 @@
                 </div>
             </div>
 
-            <!-- Flight Assignments and Flight Plan -->
-            <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
-                <!-- Active Flight Assignments -->
-                <div class="bg-white shadow rounded-lg">
-                    <div class="px-4 py-5 sm:p-6">
-                        <h3 class="text-lg font-medium text-gray-900 mb-4">Flight Assignments</h3>
-                        <div id="flightAssignments" class="space-y-4">
-                            <!-- Flight assignments will be populated here -->
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Flight Plan Submission -->
-                <div class="bg-white shadow rounded-lg">
-                    <div class="px-4 py-5 sm:p-6">
-                        <h3 class="text-lg font-medium text-gray-900 mb-4">Submit Flight Plan</h3>
-                        <form id="flightPlanForm" class="space-y-4">
+            <!-- Flight Plan Form -->
+            <div class="bg-white shadow rounded-lg mb-6">
+                <div class="px-4 py-5 sm:p-6">
+                    <h3 class="text-lg font-medium text-gray-900 mb-4">Submit Flight Plan</h3>
+                    <form id="flightPlanForm" class="space-y-4">
+                        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
                             <div>
-                                <label for="flightNumber" class="block text-sm font-medium text-gray-700">Flight Number</label>
-                                <select id="flightNumber" name="flightNumber" required class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md">
-                                    <option value="">Select flight</option>
+                                <label for="departure" class="block text-sm font-medium text-gray-700">Departure Airport</label>
+                                <select id="departure" name="departure" required class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md">
+                                    <option value="">Select airport</option>
                                 </select>
                             </div>
-
-                            <div class="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label for="departure" class="block text-sm font-medium text-gray-700">Departure</label>
-                                    <select id="departure" name="departure" required class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md">
-                                        <option value="">Select airport</option>
-                                    </select>
-                                </div>
-
-                                <div>
-                                    <label for="arrival" class="block text-sm font-medium text-gray-700">Arrival</label>
-                                    <select id="arrival" name="arrival" required class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md">
-                                        <option value="">Select airport</option>
-                                    </select>
-                                </div>
-                            </div>
-
-                            <div class="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label for="aircraft" class="block text-sm font-medium text-gray-700">Aircraft</label>
-                                    <select id="aircraft" name="aircraft" required class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md">
-                                        <option value="">Select aircraft</option>
-                                        <option value="A320">Airbus A320</option>
-                                        <option value="A330">Airbus A330</option>
-                                    </select>
-                                </div>
-
-                                <div>
-                                    <label for="cruisingAltitude" class="block text-sm font-medium text-gray-700">Cruising Altitude (ft)</label>
-                                    <input type="number" id="cruisingAltitude" name="cruisingAltitude" required min="10000" max="40000" step="1000" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md">
-                                </div>
-                            </div>
-
                             <div>
-                                <label for="route" class="block text-sm font-medium text-gray-700">Route</label>
-                                <textarea id="route" name="route" rows="3" required class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"></textarea>
+                                <label for="arrival" class="block text-sm font-medium text-gray-700">Arrival Airport</label>
+                                <select id="arrival" name="arrival" required class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md">
+                                    <option value="">Select airport</option>
+                                </select>
                             </div>
-
-                            <button type="submit" class="w-full bg-indigo-primary text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-indigo-secondary focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
-                                Submit Flight Plan
-                            </button>
-                        </form>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Voice Channel Controls -->
-            <div class="mt-6 bg-white shadow rounded-lg">
-                <div class="px-4 py-5 sm:p-6">
-                    <h3 class="text-lg font-medium text-gray-900 mb-4">Voice Channel</h3>
-                    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                            <div>
+                                <label for="aircraft" class="block text-sm font-medium text-gray-700">Aircraft</label>
+                                <select id="aircraft" name="aircraft" required class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md">
+                                    <option value="A320">Airbus A320</option>
+                                    <option value="A330">Airbus A330</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label for="cruisingAltitude" class="block text-sm font-medium text-gray-700">Cruising Altitude (ft)</label>
+                                <input type="number" id="cruisingAltitude" name="cruisingAltitude" required min="10000" max="40000" step="1000" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md">
+                            </div>
+                        </div>
                         <div>
-                            <label for="frequency" class="block text-sm font-medium text-gray-700">Frequency</label>
-                            <select id="frequency" name="frequency" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md">
-                                <option value="121.5">Ground (121.5)</option>
-                                <option value="118.1">Tower (118.1)</option>
-                                <option value="119.1">Approach (119.1)</option>
-                                <option value="125.2">Departure (125.2)</option>
-                                <option value="127.4">Center (127.4)</option>
-                            </select>
+                            <label for="route" class="block text-sm font-medium text-gray-700">Route</label>
+                            <input type="text" id="route" name="route" required class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md">
                         </div>
-                        <div class="flex items-end">
-                            <button id="joinVoiceBtn" class="w-full bg-green-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500">
-                                Join Channel
-                            </button>
-                        </div>
+                        <button type="submit" class="w-full bg-indigo-primary text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-indigo-secondary focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                            Submit Flight Plan
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Active Flight Assignments -->
+            <div class="bg-white shadow rounded-lg mb-6">
+                <div class="px-4 py-5 sm:p-6">
+                    <h3 class="text-lg font-medium text-gray-900 mb-4">Flight Assignments</h3>
+                    <div id="flightAssignments" class="space-y-4">
+                        <!-- Flight assignments will be populated here -->
                     </div>
                 </div>
             </div>
 
-            <!-- Recent Activity Log -->
-            <div class="mt-6 bg-white shadow rounded-lg">
+            <!-- Activity Log -->
+            <div class="bg-white shadow rounded-lg">
                 <div class="px-4 py-5 sm:p-6">
-                    <h3 class="text-lg font-medium text-gray-900 mb-4">Recent Activity</h3>
+                    <h3 class="text-lg font-medium text-gray-900 mb-4">Activity Log</h3>
                     <div id="activityLog" class="space-y-4">
-                        <!-- Activity log will be populated here -->
+                        <!-- Activity log entries will be populated here -->
                     </div>
                 </div>
             </div>
         </div>
     </div>
 
+    <!-- Voice Channel Controls -->
+    <div class="fixed bottom-0 right-0 m-6 bg-white shadow-lg rounded-lg p-4">
+        <div class="flex items-center space-x-4">
+            <div>
+                <label for="frequency" class="block text-sm font-medium text-gray-700">Radio Frequency</label>
+                <select id="frequency" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md">
+                    <option value="ground">Ground (121.9)</option>
+                    <option value="tower">Tower (118.1)</option>
+                    <option value="approach">Approach (119.1)</option>
+                    <option value="departure">Departure (125.2)</option>
+                </select>
+            </div>
+            <button id="joinVoiceBtn" class="bg-green-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500">
+                Join Channel
+            </button>
+        </div>
+    </div>
+
     <!-- Scripts -->
-    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <script src="js/config.js"></script>
     <script src="js/utils.js"></script>
     <script src="js/roblox-auth.js"></script>
