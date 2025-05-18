@@ -42,11 +42,11 @@ app.use(helmet({
     contentSecurityPolicy: {
         directives: {
             defaultSrc: ["'self'"],
-            scriptSrc: ["'self'", "'unsafe-inline'", 'https://www.roblox.com'],
-            styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+            scriptSrc: ["'self'", "'unsafe-inline'", 'https://www.roblox.com', 'https://cdn.tailwindcss.com'],
+            styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com', 'https://cdnjs.cloudflare.com'],
             imgSrc: ["'self'", 'data:', 'https:'],
             connectSrc: ["'self'", 'https://apis.roblox.com', 'wss:', 'ws:'],
-            fontSrc: ["'self'", 'https://fonts.gstatic.com'],
+            fontSrc: ["'self'", 'https://fonts.gstatic.com', 'https://cdnjs.cloudflare.com'],
             objectSrc: ["'none'"],
             mediaSrc: ["'self'"],
             frameSrc: ["'self'", 'https://www.roblox.com']
