@@ -3,288 +3,460 @@ const router = express.Router();
 const jwt = require('jsonwebtoken');
 const axios = require('axios');
 const noblox = require('noblox.js');
+const rateLimit = require('express-rate-limit');
+const { body, validationResult } = require('express-validator');
+const crypto = require('crypto');
+require('dotenv').config();
 
-// Environment variables
-const {
-    ROBLOX_GROUP_ID,
-    ROBLOX_OAUTH_CLIENT_ID,
-    ROBLOX_OAUTH_CLIENT_SECRET,
-    JWT_SECRET,
-    COOKIE_SECRET
-} = process.env;
+// Rate limiting configuration
+const authLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 5, // 5 attempts per window
+    message: { error: 'Too many login attempts, please try again later' }
+});
 
-// In-memory cache (replace with Redis in production)
+// In-memory storage (replace with Redis in production)
 const users = new Map();
 const sessions = new Map();
 const pendingAuths = new Map();
+const blacklistedTokens = new Set();
 
-// Roblox group rank to role mapping
-const rankToRole = {
-    255: 'owner',
-    100: 'admin',
-    80: 'supervisor',
-    50: 'atc',
-    40: 'trainee_atc',
-    30: 'senior_pilot',
-    20: 'pilot',
-    10: 'trainee_pilot',
-    1: 'passenger'
+// Constants
+const ROLES = {
+    OWNER: 'owner',
+    ADMIN: 'admin',
+    SUPERVISOR: 'supervisor',
+    ATC: 'atc',
+    TRAINEE_ATC: 'trainee_atc',
+    SENIOR_PILOT: 'senior_pilot',
+    PILOT: 'pilot',
+    TRAINEE_PILOT: 'trainee_pilot',
+    PASSENGER: 'passenger'
 };
 
-// Initialize noblox.js
-async function initializeNoblox() {
-    try {
-        await noblox.setCookie(process.env.ROBLOX_COOKIE);
-        console.log('Successfully authenticated with Roblox');
-    } catch (error) {
-        console.error('Failed to authenticate with Roblox:', error);
+const RANK_TO_ROLE = {
+    255: ROLES.OWNER,
+    100: ROLES.ADMIN,
+    80: ROLES.SUPERVISOR,
+    50: ROLES.ATC,
+    40: ROLES.TRAINEE_ATC,
+    30: ROLES.SENIOR_PILOT,
+    20: ROLES.PILOT,
+    10: ROLES.TRAINEE_PILOT,
+    1: ROLES.PASSENGER
+};
+
+// Initialize noblox.js with retry mechanism
+async function initializeNoblox(retryCount = 3) {
+    for (let i = 0; i < retryCount; i++) {
+        try {
+            await noblox.setCookie(process.env.ROBLOX_COOKIE);
+            console.log('Successfully authenticated with Roblox');
+            return;
+        } catch (error) {
+            console.error(`Roblox authentication attempt ${i + 1} failed:`, error);
+            if (i === retryCount - 1) throw error;
+            await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5s before retry
+        }
     }
 }
 
-initializeNoblox();
+// Initialize on startup
+initializeNoblox().catch(console.error);
 
 // Middleware to verify Roblox signatures
 const verifyRobloxSignature = async (req, res, next) => {
-    const signature = req.headers['roblox-signature'];
-    if (!signature) {
-        return res.status(401).json({ error: 'Missing Roblox signature' });
-    }
-
     try {
-        // Verify signature logic here
-        // This would use Roblox's public key to verify the request
+        const signature = req.headers['roblox-signature'];
+        if (!signature) {
+            return res.status(401).json({ error: 'Missing Roblox signature' });
+        }
+
+        const payload = req.body;
+        const timestamp = req.headers['roblox-timestamp'];
+        
+        if (!timestamp || Date.now() - new Date(timestamp).getTime() > 300000) { // 5 minutes
+            return res.status(401).json({ error: 'Invalid or expired timestamp' });
+        }
+
+        const computedSignature = crypto
+            .createHmac('sha256', process.env.ROBLOX_API_KEY)
+            .update(JSON.stringify(payload) + timestamp)
+            .digest('hex');
+
+        if (signature !== computedSignature) {
+            return res.status(401).json({ error: 'Invalid signature' });
+        }
+
         next();
     } catch (error) {
-        res.status(401).json({ error: 'Invalid signature' });
+        res.status(401).json({ error: 'Signature verification failed' });
     }
 };
 
-// OAuth login route
-router.post('/login', async (req, res) => {
+// Validation middleware
+const validateLogin = [
+    body('code').isString().trim().notEmpty(),
+    body('state').isString().trim().notEmpty()
+];
+
+// OAuth login route with rate limiting
+router.post('/login', [authLimiter, validateLogin], async (req, res) => {
     try {
-        const { code } = req.body;
-        
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            return res.status(400).json({ errors: errors.array() });
+        }
+
+        const { code, state } = req.body;
+
+        // Verify state parameter
+        const storedState = pendingAuths.get(state);
+        if (!storedState) {
+            return res.status(400).json({ error: 'Invalid state parameter' });
+        }
+        pendingAuths.delete(state);
+
         // Exchange code for token
         const tokenResponse = await axios.post('https://apis.roblox.com/oauth/v1/token', {
-            client_id: ROBLOX_OAUTH_CLIENT_ID,
-            client_secret: ROBLOX_OAUTH_CLIENT_SECRET,
+            client_id: process.env.ROBLOX_OAUTH_CLIENT_ID,
+            client_secret: process.env.ROBLOX_OAUTH_CLIENT_SECRET,
             code,
-            grant_type: 'authorization_code'
+            grant_type: 'authorization_code',
+            redirect_uri: process.env.ROBLOX_OAUTH_REDIRECT_URI
         });
 
-        const { access_token } = tokenResponse.data;
+        const { access_token, refresh_token } = tokenResponse.data;
 
-        // Get user info
-        const userResponse = await axios.get('https://apis.roblox.com/oauth/v1/userinfo', {
-            headers: { Authorization: `Bearer ${access_token}` }
-        });
+        // Get user info with retry mechanism
+        const userInfo = await getUserInfo(access_token);
 
-        const robloxUser = userResponse.data;
+        // Get group rank with verification
+        const groupRank = await verifyGroupMembership(userInfo.sub);
+        if (!groupRank) {
+            return res.status(403).json({ 
+                error: 'Group membership required',
+                groupId: process.env.ROBLOX_GROUP_ID
+            });
+        }
 
-        // Get group rank
-        const groupRank = await noblox.getRankInGroup(ROBLOX_GROUP_ID, robloxUser.sub);
-        const role = rankToRole[groupRank] || 'passenger';
-
-        // Create user object
+        // Create user object with enhanced security
         const user = {
-            id: robloxUser.sub,
-            username: robloxUser.preferred_username || robloxUser.name,
-            displayName: robloxUser.nickname,
-            role: role,
-            groupRank: groupRank,
-            premium: robloxUser.premium,
+            id: userInfo.sub,
+            username: userInfo.preferred_username || userInfo.name,
+            displayName: userInfo.nickname,
+            role: RANK_TO_ROLE[groupRank] || ROLES.PASSENGER,
+            groupRank,
+            premium: userInfo.premium,
             created: new Date(),
-            lastLogin: new Date()
+            lastLogin: new Date(),
+            lastIp: req.ip,
+            securityVersion: 1, // For forced logout on security events
+            permissions: calculatePermissions(groupRank)
         };
 
-        // Store user
+        // Store user with session tracking
         users.set(user.id, user);
-
-        // Create JWT
+        const sessionId = crypto.randomBytes(32).toString('hex');
+        
+        // Create JWT with enhanced security
         const token = jwt.sign(
-            { userId: user.id, role: user.role },
-            JWT_SECRET,
-            { expiresIn: '7d' }
+            {
+                userId: user.id,
+                role: user.role,
+                sessionId,
+                securityVersion: user.securityVersion
+            },
+            process.env.JWT_SECRET,
+            {
+                expiresIn: process.env.JWT_EXPIRY || '7d',
+                algorithm: 'HS512'
+            }
         );
 
-        // Set secure cookie
+        // Store session info
+        sessions.set(sessionId, {
+            userId: user.id,
+            createdAt: new Date(),
+            lastActivity: new Date(),
+            userAgent: req.headers['user-agent'],
+            ip: req.ip
+        });
+
+        // Set secure cookie with enhanced options
         res.cookie('auth_token', token, {
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
             sameSite: 'strict',
-            maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+            maxAge: 7 * 24 * 60 * 60 * 1000,
+            path: '/',
+            signed: true
         });
 
-        res.json({ success: true, user });
+        // Store refresh token
+        user.refreshToken = refresh_token;
+        users.set(user.id, user);
+
+        // Log successful login
+        await logAuthEvent(user.id, 'login_success', req);
+
+        res.json({ 
+            success: true, 
+            user: sanitizeUser(user),
+            expiresIn: 7 * 24 * 60 * 60
+        });
     } catch (error) {
         console.error('Login error:', error);
+        await logAuthEvent(null, 'login_failed', req, error.message);
         res.status(401).json({
             error: 'Authentication failed',
-            details: error.message
+            message: process.env.NODE_ENV === 'production' 
+                ? 'Authentication failed' 
+                : error.message
         });
     }
 });
 
-// Game server authentication
+// Game server authentication with enhanced security
 router.post('/game-auth', verifyRobloxSignature, async (req, res) => {
     try {
-        const { placeId, jobId, userId } = req.body;
+        const { placeId, jobId, userId, serverKey } = req.body;
+
+        // Verify server key
+        if (serverKey !== process.env.GAME_SERVER_KEY) {
+            throw new Error('Invalid server key');
+        }
 
         // Verify place ID
         if (placeId !== process.env.ROBLOX_PLACE_ID) {
             throw new Error('Invalid place ID');
         }
 
-        // Get user info
-        const user = users.get(userId);
+        // Get and verify user
+        const user = await getAndVerifyUser(userId);
         if (!user) {
-            throw new Error('User not found');
+            throw new Error('User not found or not authorized');
         }
 
-        // Create game session token
+        // Create game session token with limited scope
         const gameToken = jwt.sign(
-            { userId, placeId, jobId },
-            JWT_SECRET,
-            { expiresIn: '1h' }
+            {
+                userId,
+                placeId,
+                jobId,
+                scope: 'game',
+                permissions: user.permissions
+            },
+            process.env.JWT_SECRET,
+            {
+                expiresIn: '1h',
+                algorithm: 'HS512'
+            }
         );
+
+        // Log game authentication
+        await logAuthEvent(userId, 'game_auth_success', req);
 
         res.json({
             success: true,
             gameToken,
-            user: {
-                id: user.id,
-                role: user.role,
-                groupRank: user.groupRank
-            }
+            user: sanitizeUser(user)
         });
     } catch (error) {
+        await logAuthEvent(req.body.userId, 'game_auth_failed', req, error.message);
         res.status(401).json({
             error: 'Game authentication failed',
-            details: error.message
+            message: process.env.NODE_ENV === 'production' 
+                ? 'Authentication failed' 
+                : error.message
         });
     }
 });
 
-// Verify game pass
-router.get('/verify-gamepass/:userId/:gamepassId', async (req, res) => {
+// Logout with session cleanup
+router.post('/logout', async (req, res) => {
     try {
-        const { userId, gamepassId } = req.params;
-        const hasPass = await noblox.getGamePass(userId, gamepassId);
-        res.json({ success: true, hasPass });
-    } catch (error) {
-        res.status(500).json({
-            error: 'Failed to verify game pass',
-            details: error.message
-        });
-    }
-});
-
-// Get user profile
-router.get('/profile', async (req, res) => {
-    try {
-        const token = req.cookies.auth_token;
-        if (!token) {
-            throw new Error('No authentication token');
+        const token = req.signedCookies.auth_token;
+        if (token) {
+            const decoded = jwt.verify(token, process.env.JWT_SECRET);
+            
+            // Add token to blacklist
+            blacklistedTokens.add(token);
+            
+            // Clean up session
+            sessions.delete(decoded.sessionId);
+            
+            // Log logout
+            await logAuthEvent(decoded.userId, 'logout_success', req);
         }
 
-        const decoded = jwt.verify(token, JWT_SECRET);
-        const user = users.get(decoded.userId);
-
-        if (!user) {
-            throw new Error('User not found');
-        }
-
-        // Get additional Roblox info
-        const [groupRank, premium] = await Promise.all([
-            noblox.getRankInGroup(ROBLOX_GROUP_ID, user.id),
-            noblox.getPremium(user.id)
-        ]);
-
-        res.json({
-            success: true,
-            user: {
-                ...user,
-                groupRank,
-                premium
-            }
+        res.clearCookie('auth_token', {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'strict',
+            path: '/'
         });
+
+        res.json({ success: true });
     } catch (error) {
-        res.status(401).json({
-            error: 'Failed to get profile',
-            details: error.message
-        });
+        res.status(500).json({ error: 'Logout failed' });
     }
 });
 
-// Logout route
-router.post('/logout', (req, res) => {
-    res.clearCookie('auth_token');
-    res.json({ success: true });
-});
-
-// Refresh token
+// Token refresh with security checks
 router.post('/refresh-token', async (req, res) => {
     try {
-        const token = req.cookies.auth_token;
+        const token = req.signedCookies.auth_token;
         if (!token) {
             throw new Error('No refresh token');
         }
 
-        const decoded = jwt.verify(token, JWT_SECRET);
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
         const user = users.get(decoded.userId);
+        const session = sessions.get(decoded.sessionId);
 
-        if (!user) {
-            throw new Error('User not found');
+        if (!user || !session) {
+            throw new Error('Invalid session');
+        }
+
+        // Verify security version
+        if (user.securityVersion !== decoded.securityVersion) {
+            throw new Error('Security version mismatch');
+        }
+
+        // Verify session is still valid
+        if (isSessionExpired(session)) {
+            throw new Error('Session expired');
         }
 
         // Create new token
         const newToken = jwt.sign(
-            { userId: user.id, role: user.role },
-            JWT_SECRET,
-            { expiresIn: '7d' }
+            {
+                userId: user.id,
+                role: user.role,
+                sessionId: decoded.sessionId,
+                securityVersion: user.securityVersion
+            },
+            process.env.JWT_SECRET,
+            {
+                expiresIn: process.env.JWT_EXPIRY || '7d',
+                algorithm: 'HS512'
+            }
         );
+
+        // Update session
+        session.lastActivity = new Date();
+        sessions.set(decoded.sessionId, session);
 
         // Set new cookie
         res.cookie('auth_token', newToken, {
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
             sameSite: 'strict',
-            maxAge: 7 * 24 * 60 * 60 * 1000
+            maxAge: 7 * 24 * 60 * 60 * 1000,
+            path: '/',
+            signed: true
         });
 
         res.json({ success: true });
     } catch (error) {
         res.status(401).json({
-            error: 'Failed to refresh token',
-            details: error.message
+            error: 'Token refresh failed',
+            message: process.env.NODE_ENV === 'production' 
+                ? 'Token refresh failed' 
+                : error.message
         });
     }
 });
 
-// Gamepass verification endpoint (for middleware)
-router.get('/verify-gamepass/:userId', async (req, res) => {
-    try {
-        const userId = req.params.userId;
-        const gamepassId = process.env.ROBLOX_GAMEPASS_ID;
-        const url = `https://inventory.roblox.com/v1/users/${userId}/items/GamePass/${gamepassId}`;
-        const response = await axios.get(url);
-        const hasGamepass = Array.isArray(response.data.data) && response.data.data.length > 0;
-        res.json({ hasGamepass });
-    } catch (error) {
-        res.status(500).json({ error: 'Failed to verify gamepass', details: error.message });
+// Utility functions
+async function getUserInfo(accessToken, retryCount = 3) {
+    for (let i = 0; i < retryCount; i++) {
+        try {
+            const response = await axios.get('https://apis.roblox.com/oauth/v1/userinfo', {
+                headers: { Authorization: `Bearer ${accessToken}` }
+            });
+            return response.data;
+        } catch (error) {
+            if (i === retryCount - 1) throw error;
+            await new Promise(resolve => setTimeout(resolve, 1000));
+        }
     }
-});
+}
 
-// Get user profile (requires authentication)
-router.get('/profile', (req, res) => {
-    const authHeader = req.headers['authorization'];
-    const token = authHeader && authHeader.split(' ')[1];
-    if (!token) return res.status(401).json({ error: 'Authentication required' });
+async function verifyGroupMembership(userId) {
+    try {
+        return await noblox.getRankInGroup(process.env.ROBLOX_GROUP_ID, userId);
+    } catch (error) {
+        console.error('Group verification failed:', error);
+        return null;
+    }
+}
 
-    jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key', (err, user) => {
-        if (err) return res.status(403).json({ error: 'Invalid token' });
-        res.json({ user });
+function calculatePermissions(groupRank) {
+    const permissions = new Set();
+    
+    // Add base permissions
+    permissions.add('view_flights');
+    permissions.add('book_flights');
+    
+    // Add role-specific permissions
+    if (groupRank >= 10) permissions.add('access_training');
+    if (groupRank >= 20) permissions.add('fly_aircraft');
+    if (groupRank >= 30) permissions.add('train_others');
+    if (groupRank >= 40) permissions.add('atc_ground');
+    if (groupRank >= 50) permissions.add('atc_tower');
+    if (groupRank >= 80) permissions.add('manage_flights');
+    if (groupRank >= 100) permissions.add('manage_users');
+    if (groupRank >= 255) permissions.add('admin_panel');
+    
+    return Array.from(permissions);
+}
+
+function sanitizeUser(user) {
+    const { refreshToken, securityVersion, lastIp, ...safeUser } = user;
+    return safeUser;
+}
+
+function isSessionExpired(session) {
+    const maxAge = parseInt(process.env.SESSION_MAX_AGE) || (7 * 24 * 60 * 60 * 1000);
+    return Date.now() - new Date(session.lastActivity).getTime() > maxAge;
+}
+
+async function logAuthEvent(userId, event, req, details = null) {
+    // Implementation would depend on logging system
+    console.log({
+        timestamp: new Date(),
+        userId,
+        event,
+        ip: req.ip,
+        userAgent: req.headers['user-agent'],
+        details
     });
-});
+}
+
+// Cleanup tasks
+setInterval(() => {
+    // Clean up expired sessions
+    const now = Date.now();
+    for (const [sessionId, session] of sessions.entries()) {
+        if (isSessionExpired(session)) {
+            sessions.delete(sessionId);
+        }
+    }
+
+    // Clean up blacklisted tokens older than 24 hours
+    const yesterday = now - (24 * 60 * 60 * 1000);
+    for (const token of blacklistedTokens) {
+        try {
+            const decoded = jwt.decode(token);
+            if (decoded.exp * 1000 < yesterday) {
+                blacklistedTokens.delete(token);
+            }
+        } catch (error) {
+            blacklistedTokens.delete(token);
+        }
+    }
+}, 60 * 60 * 1000); // Run every hour
 
 module.exports = router;
