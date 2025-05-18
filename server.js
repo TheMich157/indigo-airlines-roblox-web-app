@@ -194,3 +194,79 @@ app.use('/api/pilot', authenticateToken, verifyRole(['pilot']), pilotRoutes);
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Handle SPA routing
+app.get('*', (req, res) => {
+    if (req.url.startsWith('/api')) {
+        return res.status(404).json({ error: 'API endpoint not found' });
+    }
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// Error handling middleware
+app.use((err, req, res, next) => {
+    console.error(err.stack);
+    
+    // Handle validation errors
+    if (err instanceof validationResult) {
+        return res.status(400).json({
+            error: 'Validation failed',
+            details: err.array()
+        });
+    }
+
+    // Handle JWT errors
+    if (err.name === 'JsonWebTokenError') {
+        return res.status(401).json({
+            error: 'Invalid token',
+            message: err.message
+        });
+    }
+
+    // Handle rate limit errors
+    if (err.type === 'RateLimit') {
+        return res.status(429).json({
+            error: 'Too many requests',
+            message: 'Please try again later'
+        });
+    }
+
+    // Generic error response
+    res.status(err.status || 500).json({
+        error: 'Internal server error',
+        message: process.env.NODE_ENV === 'production' 
+            ? 'Something went wrong' 
+            : err.message
+    });
+});
+
+// Utility functions
+async function logATCAction(userId, action, data) {
+    // TODO: Implement ATC action logging
+    console.log(`ATC Action: ${action}`, { userId, ...data });
+}
+
+async function logFlightUpdate(pilotId, data) {
+    // TODO: Implement flight update logging
+    console.log(`Flight Update from pilot ${pilotId}:`, data);
+}
+
+async function updateUserPresence(userId, isOnline) {
+    // TODO: Implement user presence tracking
+    console.log(`User ${userId} is now ${isOnline ? 'online' : 'offline'}`);
+}
+
+// Start server
+const PORT = process.env.PORT || 8000;
+server.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+});
+
+// Graceful shutdown
+process.on('SIGTERM', () => {
+    console.log('SIGTERM received. Shutting down gracefully...');
+    server.close(() => {
+        console.log('Server closed');
+        process.exit(0);
+    });
+});
+
+module.exports = app;
