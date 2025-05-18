@@ -11,8 +11,8 @@ const flightLogs = new Map();
 // Validation middleware
 const validateFlight = [
     body('flightNumber').matches(/^6E-\d{3,4}$/),
-    body('departure').isString().trim().length(3),
-    body('arrival').isString().trim().length(3),
+    body('departure').isString().trim().isLength({ min: 3, max: 3 }),
+    body('arrival').isString().trim().isLength({ min: 3, max: 3 }),
     body('aircraft').isIn(['A320', 'A330']),
     body('departureTime').isISO8601(),
     body('arrivalTime').isISO8601(),
@@ -27,8 +27,8 @@ const validateFlight = [
 ];
 
 const validateSearch = [
-    query('departure').optional().isString().trim().length(3),
-    query('arrival').optional().isString().trim().length(3),
+    query('departure').optional().isString().trim().isLength({ min: 3, max: 3 }),
+    query('arrival').optional().isString().trim().isLength({ min: 3, max: 3 }),
     query('date').optional().isISO8601(),
     query('class').optional().isIn(['economy', 'business']),
     query('passengers').optional().isInt({ min: 1, max: 9 })
