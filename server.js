@@ -1,10 +1,14 @@
-// Import route modules
 const express = require('express');
 const cors = require('cors');
 const http = require('http');
 const socketIo = require('socket.io');
 const path = require('path');
 const jwt = require('jsonwebtoken');
+const cookieParser = require('cookie-parser');
+const helmet = require('helmet');
+const compression = require('compression');
+const { rateLimit } = require('express-rate-limit');
+const { body, validationResult } = require('express-validator');
 require('dotenv').config();
 
 // Import route modules
@@ -14,178 +18,179 @@ const bookingRoutes = require('./routes/bookings');
 const atcRoutes = require('./routes/atc');
 const pilotRoutes = require('./routes/pilot');
 
+// Import middleware
+const { authenticateToken, verifyRole, verifyGamepass } = require('./middleware/auth');
+
 const app = express();
 const server = http.createServer(app);
-const io = socketIo(server);
+
+// Socket.IO setup with security
+const io = socketIo(server, {
+    cors: {
+        origin: process.env.NODE_ENV === 'production' 
+            ? 'https://your-production-domain.com' 
+            : 'http://localhost:8000',
+        methods: ['GET', 'POST'],
+        credentials: true
+    },
+    pingTimeout: parseInt(process.env.SOCKET_PING_TIMEOUT) || 5000,
+    pingInterval: parseInt(process.env.SOCKET_PING_INTERVAL) || 10000
+});
+
+// Security middleware
+app.use(helmet({
+    contentSecurityPolicy: {
+        directives: {
+            defaultSrc: ["'self'"],
+            scriptSrc: ["'self'", "'unsafe-inline'", 'https://www.roblox.com'],
+            styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+            imgSrc: ["'self'", 'data:', 'https:'],
+            connectSrc: ["'self'", 'https://apis.roblox.com', 'wss:', 'ws:'],
+            fontSrc: ["'self'", 'https://fonts.gstatic.com'],
+            objectSrc: ["'none'"],
+            mediaSrc: ["'self'"],
+            frameSrc: ["'self'", 'https://www.roblox.com']
+        }
+    }
+}));
+
+// Rate limiting
+const limiter = rateLimit({
+    windowMs: parseInt(process.env.RATE_LIMIT_WINDOW) * 60 * 1000 || 15 * 60 * 1000,
+    max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100
+});
 
 // Middleware
-app.use(cors());
+app.use(cors({
+    origin: process.env.NODE_ENV === 'production' 
+        ? 'https://your-production-domain.com' 
+        : 'http://localhost:8000',
+    credentials: true
+}));
+app.use(compression());
 app.use(express.json());
-// Import middleware
-const { authenticateToken, verifyRole } = require('./middleware/auth');
+app.use(cookieParser(process.env.COOKIE_SECRET));
+app.use(limiter);
 
-// Protected API routes
+// Make io available to routes
+app.set('io', io);
+
+// Socket.IO authentication middleware
+io.use((socket, next) => {
+    const token = socket.handshake.auth.token;
+    if (!token) {
+        return next(new Error('Authentication required'));
+    }
+
+    jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
+        if (err) return next(new Error('Invalid token'));
+        socket.user = decoded;
+        next();
+    });
+});
+
+// Socket.IO connection handling
+io.on('connection', (socket) => {
+    console.log(`Client connected: ${socket.user.username}`);
+
+    // Join user-specific room
+    socket.join(`user_${socket.user.id}`);
+
+    // Join role-specific rooms
+    if (socket.user.roles.includes('pilot')) {
+        socket.join('pilots');
+    }
+    if (socket.user.roles.includes('atc')) {
+        socket.join('atc');
+    }
+
+    // Handle ATC clearances
+    socket.on('atc_clearance', async (data) => {
+        try {
+            if (!socket.user.roles.includes('atc')) {
+                throw new Error('Unauthorized');
+            }
+
+            // Broadcast clearance to relevant clients
+            io.to(`flight_${data.flightNumber}`).emit('clearance_issued', {
+                flightNumber: data.flightNumber,
+                clearanceType: data.clearanceType,
+                message: data.message,
+                issuedBy: socket.user.username,
+                timestamp: new Date()
+            });
+
+            // Log clearance
+            await logATCAction(socket.user.id, 'clearance_issued', data);
+        } catch (error) {
+            socket.emit('error', { message: error.message });
+        }
+    });
+
+    // Handle voice channel management
+    socket.on('join_voice_channel', (data) => {
+        try {
+            const { frequency } = data;
+            const previousChannels = Object.keys(socket.rooms)
+                .filter(room => room.startsWith('voice_'));
+            
+            // Leave previous voice channels
+            previousChannels.forEach(channel => {
+                socket.leave(channel);
+                io.to(channel).emit('user_left_voice', {
+                    userId: socket.user.id,
+                    username: socket.user.username
+                });
+            });
+
+            // Join new channel
+            socket.join(`voice_${frequency}`);
+            io.to(`voice_${frequency}`).emit('user_joined_voice', {
+                userId: socket.user.id,
+                username: socket.user.username,
+                role: socket.user.roles[0]
+            });
+        } catch (error) {
+            socket.emit('error', { message: error.message });
+        }
+    });
+
+    // Handle flight updates
+    socket.on('flight_update', async (data) => {
+        try {
+            if (!socket.user.roles.includes('pilot')) {
+                throw new Error('Unauthorized');
+            }
+
+            // Broadcast flight update
+            io.to('atc').emit('flight_status_updated', {
+                ...data,
+                pilotId: socket.user.id,
+                timestamp: new Date()
+            });
+
+            // Log flight update
+            await logFlightUpdate(socket.user.id, data);
+        } catch (error) {
+            socket.emit('error', { message: error.message });
+        }
+    });
+
+    socket.on('disconnect', async () => {
+        console.log(`Client disconnected: ${socket.user.username}`);
+        // Clean up user presence
+        await updateUserPresence(socket.user.id, false);
+    });
+});
+
+// API Routes
+app.use('/api/auth', authRoutes);
 app.use('/api/flights', authenticateToken, flightRoutes);
 app.use('/api/bookings', authenticateToken, bookingRoutes);
 app.use('/api/atc', authenticateToken, verifyRole(['atc']), atcRoutes);
 app.use('/api/pilot', authenticateToken, verifyRole(['pilot']), pilotRoutes);
 
-// Public routes
-
-// Make io available to routes
-app.set('io', io);
-
-// Auth routes (public)
-app.use('/api/auth', authRoutes);
-
-// Serve static files from the public directory
+// Serve static files
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Serve all non-API routes through index.html for client-side routing
-app.get('*', (req, res) => {
-    // Don't serve index.html for API routes
-    if (req.url.startsWith('/api')) {
-        return res.status(404).json({ error: 'API endpoint not found' });
-    }
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
-
-// In-memory storage (replace with database in production)
-const flights = new Map();
-const bookings = new Map();
-const users = new Map();
-const pilotLogs = new Map();
-
-// Socket.IO connection handling
-io.on('connection', (socket) => {
-    console.log('Client connected');
-
-    // Handle ATC clearances
-    socket.on('atc_clearance', (data) => {
-        // Broadcast clearance to all connected clients
-        io.emit('clearance_issued', {
-            flightNumber: data.flightNumber,
-            clearanceType: data.clearanceType,
-            message: data.message
-        });
-    });
-
-    // Handle voice channel connections
-    socket.on('join_voice_channel', (data) => {
-        socket.join(`voice_${data.frequency}`);
-        io.to(`voice_${data.frequency}`).emit('user_joined', {
-            userId: data.userId,
-            role: data.role
-        });
-    });
-
-    socket.on('disconnect', () => {
-        console.log('Client disconnected');
-    });
-});
-
-// API Routes
-
-// Auth routes
-app.post('/api/auth/roblox', (req, res) => {
-    // TODO: Implement actual Roblox authentication
-    const mockUser = {
-        id: '12345',
-        username: req.body.username,
-        role: req.body.role || 'passenger'
-    };
-
-    const token = jwt.sign(mockUser, 'your-secret-key', { expiresIn: '24h' });
-    res.json({ token, user: mockUser });
-});
-
-// Flight routes
-app.post('/api/flights', (req, res) => {
-    const flight = {
-        id: Date.now().toString(),
-        ...req.body,
-        status: 'Scheduled'
-    };
-    flights.set(flight.id, flight);
-    res.json(flight);
-});
-
-app.get('/api/flights', (req, res) => {
-    res.json(Array.from(flights.values()));
-});
-
-// Booking routes
-app.post('/api/bookings', (req, res) => {
-    const booking = {
-        id: Date.now().toString(),
-        ...req.body,
-        status: 'Confirmed'
-    };
-    bookings.set(booking.id, booking);
-    res.json(booking);
-});
-
-app.get('/api/bookings/:userId', (req, res) => {
-    const userBookings = Array.from(bookings.values())
-        .filter(booking => booking.userId === req.params.userId);
-    res.json(userBookings);
-});
-
-// Pilot routes
-app.get('/api/pilot/logs/:pilotId', (req, res) => {
-    const logs = pilotLogs.get(req.params.pilotId) || [];
-    res.json(logs);
-});
-
-app.post('/api/pilot/logs', (req, res) => {
-    const log = {
-        id: Date.now().toString(),
-        ...req.body,
-        timestamp: new Date()
-    };
-    const pilotId = req.body.pilotId;
-    const logs = pilotLogs.get(pilotId) || [];
-    logs.push(log);
-    pilotLogs.set(pilotId, logs);
-    res.json(log);
-});
-
-// ATC routes
-app.post('/api/atc/clearance', (req, res) => {
-    const clearance = {
-        id: Date.now().toString(),
-        ...req.body,
-        timestamp: new Date()
-    };
-    
-    // Broadcast clearance via Socket.IO
-    io.emit('clearance_issued', clearance);
-    res.json(clearance);
-});
-
-// Gamepass verification route (mock)
-app.get('/api/verify-gamepass/:userId', (req, res) => {
-    // TODO: Implement actual Roblox gamepass verification
-    res.json({
-        hasGamepass: false,
-        message: 'User does not own the Business Class gamepass'
-    });
-});
-
-// Error handling middleware
-app.use((err, req, res, next) => {
-    console.error(err.stack);
-    res.status(500).json({
-        error: 'Something went wrong!',
-        message: err.message
-    });
-});
-
-// Start server
-const PORT = process.env.PORT || 8000;
-server.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-});
-
-// Export for testing
-module.exports = app;
+// Handle SPA routing
