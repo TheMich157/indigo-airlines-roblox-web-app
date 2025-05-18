@@ -1,24 +1,24 @@
 const jwt = require('jsonwebtoken');
 const axios = require('axios');
-const express = require('express');
-const router = express.Router();
 
 // Authentication middleware (expects JWT from Roblox OAuth)
 const authenticateToken = (req, res, next) => {
+    // Check both Authorization header and cookie
     const authHeader = req.headers['authorization'];
-    const token = authHeader && authHeader.split(' ')[1];
+    const cookieToken = req.cookies?.auth_token;
+    const token = authHeader?.split(' ')[1] || cookieToken;
 
     if (!token) {
         return res.status(401).json({ error: 'Authentication required' });
     }
 
-    jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key', (err, user) => {
-        if (err) {
-            return res.status(403).json({ error: 'Invalid token' });
-        }
-        req.user = user;
+    try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+        req.user = decoded;
         next();
-    });
+    } catch (error) {
+        return res.status(403).json({ error: 'Invalid or expired token' });
+    }
 };
 
 // Role verification middleware
@@ -26,6 +26,10 @@ const verifyRole = (roles) => {
     return (req, res, next) => {
         if (!req.user) {
             return res.status(401).json({ error: 'Authentication required' });
+        }
+
+        if (!Array.isArray(roles)) {
+            roles = [roles];
         }
 
         if (!roles.includes(req.user.role)) {
@@ -46,15 +50,25 @@ const verifyGamepass = async (req, res, next) => {
     }
 
     try {
-        // Roblox API endpoint for gamepass ownership
-        const userId = req.user.robloxId || req.user.id;
+        const userId = req.user.userId || req.user.id;
         const gamepassId = process.env.ROBLOX_GAMEPASS_ID;
-        // Roblox API: https://games.roblox.com/docs#!/GamePasses/get_v1_game_passes_gamePassId_isUserEligible_userId
+        
+        // First check cache
+        const cacheKey = `gamepass:${userId}:${gamepassId}`;
+        const cached = await getCache(cacheKey);
+        
+        if (cached !== null) {
+            req.hasGamepass = cached;
+            return next();
+        }
+
+        // If not in cache, check Roblox API
         const url = `https://inventory.roblox.com/v1/users/${userId}/items/GamePass/${gamepassId}`;
         const response = await axios.get(url);
-
-        // If the array is not empty, user owns the gamepass
         const hasGamepass = Array.isArray(response.data.data) && response.data.data.length > 0;
+
+        // Cache the result for 5 minutes
+        await setCache(cacheKey, hasGamepass, 300);
 
         if (!hasGamepass) {
             return res.status(403).json({
@@ -63,39 +77,133 @@ const verifyGamepass = async (req, res, next) => {
             });
         }
 
+        req.hasGamepass = true;
         next();
     } catch (error) {
-        res.status(500).json({ error: 'Failed to verify gamepass', details: error.message });
+        console.error('Gamepass verification error:', error);
+        res.status(500).json({ 
+            error: 'Failed to verify gamepass',
+            message: 'Unable to verify gamepass ownership. Please try again later.'
+        });
     }
 };
 
-router.post('/', authenticateToken, verifyRole(['admin', 'supervisor']), (req, res) => { ... });
+// Group rank verification middleware
+const verifyGroupRank = (minRank) => {
+    return async (req, res, next) => {
+        if (!req.user) {
+            return res.status(401).json({ error: 'Authentication required' });
+        }
 
+        try {
+            const userId = req.user.userId || req.user.id;
+            const groupId = process.env.ROBLOX_GROUP_ID;
+            
+            // First check cache
+            const cacheKey = `grouprank:${userId}:${groupId}`;
+            const cached = await getCache(cacheKey);
+            
+            if (cached !== null) {
+                if (cached >= minRank) {
+                    req.groupRank = cached;
+                    return next();
+                }
+                return res.status(403).json({
+                    error: 'Insufficient rank',
+                    message: `This action requires group rank ${minRank} or higher`
+                });
+            }
 
-router.post('/gamepass', authenticateToken, verifyGamepass, (req, res) => {
-    // Your logic for handling the request goes here
-    res.json({ message: 'Gamepass verified successfully!' });
+            // If not in cache, check Roblox API
+            const url = `https://groups.roblox.com/v1/users/${userId}/groups/roles`;
+            const response = await axios.get(url);
+            const group = response.data.data.find(g => g.group.id === parseInt(groupId));
+            
+            if (!group) {
+                return res.status(403).json({
+                    error: 'Group membership required',
+                    message: 'You must be a member of the IndiGo Airlines group'
+                });
+            }
+
+            const rank = group.role.rank;
+            
+            // Cache the result for 5 minutes
+            await setCache(cacheKey, rank, 300);
+
+            if (rank < minRank) {
+                return res.status(403).json({
+                    error: 'Insufficient rank',
+                    message: `This action requires group rank ${minRank} or higher`
+                });
+            }
+
+            req.groupRank = rank;
+            next();
+        } catch (error) {
+            console.error('Group rank verification error:', error);
+            res.status(500).json({ 
+                error: 'Failed to verify group rank',
+                message: 'Unable to verify group rank. Please try again later.'
+            });
+        }
+    };
+};
+
+// Simple in-memory cache (replace with Redis in production)
+const cache = new Map();
+
+async function getCache(key) {
+    const item = cache.get(key);
+    if (!item) return null;
+    if (Date.now() > item.expires) {
+        cache.delete(key);
+        return null;
+    }
+    return item.value;
 }
-);
-// Example route using the middleware
-router.get('/protected', authenticateToken, verifyRole(['admin']), (req, res) => {
-    res.json({ message: 'This is a protected route for admins only!' });
-});
-// Example route using the gamepass verification middleware
-router.get('/gamepass-protected', authenticateToken, verifyGamepass, (req, res) => {
-    res.json({ message: 'This is a protected route for users with the gamepass!' });
-});
-// Example route for user profile
-router.get('/profile', authenticateToken, (req, res) => {
-    res.json({ user: req.user });
-});
-// Example route for user profile
-router.get('/profile', authenticateToken, (req, res) => {
-    res.json({ user: req.user });
-});
+
+async function setCache(key, value, ttlSeconds) {
+    cache.set(key, {
+        value,
+        expires: Date.now() + (ttlSeconds * 1000)
+    });
+}
+
+// Rate limiting middleware
+const rateLimit = (requests, period) => {
+    const clients = new Map();
+
+    return (req, res, next) => {
+        const ip = req.ip;
+        const now = Date.now();
+        
+        // Initialize or clean up client record
+        if (!clients.has(ip) || now > clients.get(ip).resetTime) {
+            clients.set(ip, {
+                count: 0,
+                resetTime: now + period
+            });
+        }
+
+        const client = clients.get(ip);
+        
+        if (client.count >= requests) {
+            return res.status(429).json({
+                error: 'Too many requests',
+                message: 'Please try again later'
+            });
+        }
+
+        client.count++;
+        next();
+    };
+};
 
 module.exports = {
     authenticateToken,
     verifyRole,
-    verifyGamepass
+    verifyGamepass,
+    verifyGroupRank,
+    rateLimit
 };
