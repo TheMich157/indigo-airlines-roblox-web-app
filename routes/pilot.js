@@ -1,27 +1,21 @@
 const express = require('express');
 const router = express.Router();
-const { body, param, validationResult } = require('express-validator');
-const { verifyGamepass } = require('../middleware/auth');
+const { body, param, query, validationResult } = require('express-validator');
+const { authenticateToken, verifyGamepass } = require('../middleware/auth');
 
-// In-memory storage (replace with database in production)
+// In-memory storage for pilot data
 const pilotLogs = new Map();
 const pilotStats = new Map();
 const activeFlights = new Map();
 const flightPlans = new Map();
 
 // Validation middleware
-const validatePilotId = param('pilotId')
-    .isString()
-    .trim()
-    .notEmpty()
-    .withMessage('Valid pilot ID is required');
-
 const validateFlightLog = [
-    body('pilotId').isString().trim().notEmpty(),
-    body('flightNumber').isString().trim().notEmpty(),
-    body('departure').isString().trim().length(3),
-    body('arrival').isString().trim().length(3),
-    body('aircraft').isString().trim().notEmpty(),
+    body('flightId').isString().trim().notEmpty(),
+    body('flightNumber').matches(/^6E-\d{3,4}$/),
+    body('departure').isString().trim().isLength({ min: 3, max: 3 }),
+    body('arrival').isString().trim().isLength({ min: 3, max: 3 }),
+    body('aircraft').isIn(['A320', 'A330']),
     body('duration').isNumeric().toFloat(),
     body('miles').isNumeric().toFloat(),
     body('fuelUsed').isNumeric().toFloat().optional(),
@@ -29,10 +23,10 @@ const validateFlightLog = [
 ];
 
 const validateFlightPlan = [
-    body('flightNumber').isString().trim().notEmpty(),
-    body('departure').isString().trim().length(3),
-    body('arrival').isString().trim().length(3),
-    body('aircraft').isString().trim().notEmpty(),
+    body('flightNumber').matches(/^6E-\d{3,4}$/),
+    body('departure').isString().trim().isLength({ min: 3, max: 3 }),
+    body('arrival').isString().trim().isLength({ min: 3, max: 3 }),
+    body('aircraft').isIn(['A320', 'A330']),
     body('cruiseAltitude').isInt({ min: 1000, max: 45000 }),
     body('route').isString().trim().notEmpty(),
     body('alternates').isArray().optional(),
@@ -40,7 +34,9 @@ const validateFlightPlan = [
 ];
 
 // Get pilot profile and stats
-router.get('/profile/:pilotId', validatePilotId, async (req, res) => {
+router.get('/profile/:pilotId', [
+    param('pilotId').isString().trim().notEmpty()
+], async (req, res) => {
     try {
         const errors = validationResult(req);
         if (!errors.isEmpty()) {
@@ -80,11 +76,11 @@ router.get('/profile/:pilotId', validatePilotId, async (req, res) => {
 
 // Get pilot flight logs with filtering and pagination
 router.get('/logs/:pilotId', [
-    validatePilotId,
-    param('page').optional().isInt({ min: 1 }),
-    param('limit').optional().isInt({ min: 1, max: 100 }),
-    param('startDate').optional().isISO8601(),
-    param('endDate').optional().isISO8601()
+    param('pilotId').isString().trim().notEmpty(),
+    query('page').optional().isInt({ min: 1 }),
+    query('limit').optional().isInt({ min: 1, max: 100 }),
+    query('startDate').optional().isISO8601(),
+    query('endDate').optional().isISO8601()
 ], async (req, res) => {
     try {
         const errors = validationResult(req);
@@ -133,7 +129,7 @@ router.get('/logs/:pilotId', [
 });
 
 // Add flight log entry
-router.post('/logs', validateFlightLog, async (req, res) => {
+router.post('/logs', [authenticateToken, ...validateFlightLog], async (req, res) => {
     try {
         const errors = validationResult(req);
         if (!errors.isEmpty()) {
@@ -142,24 +138,25 @@ router.post('/logs', validateFlightLog, async (req, res) => {
 
         const log = {
             id: Date.now().toString(),
+            pilotId: req.user.id,
             ...req.body,
             timestamp: new Date(),
             verified: false
         };
 
         // Get existing logs or create new array
-        const logs = pilotLogs.get(req.body.pilotId) || [];
+        const logs = pilotLogs.get(req.user.id) || [];
         logs.push(log);
-        pilotLogs.set(req.body.pilotId, logs);
+        pilotLogs.set(req.user.id, logs);
 
         // Update pilot stats
-        await updatePilotStats(req.body.pilotId, log);
+        await updatePilotStats(req.user.id, log);
 
         // Remove from active flights
-        activeFlights.delete(req.body.pilotId);
+        activeFlights.delete(req.user.id);
 
         // Notify via Socket.IO
-        req.app.get('io').to(`pilot_${req.body.pilotId}`).emit('flight_completed', log);
+        req.app.get('io').to(`pilot_${req.user.id}`).emit('flight_completed', log);
 
         res.status(201).json(log);
     } catch (error) {
@@ -168,7 +165,7 @@ router.post('/logs', validateFlightLog, async (req, res) => {
 });
 
 // File flight plan
-router.post('/flight-plan', [validateFlightPlan, verifyGamepass], async (req, res) => {
+router.post('/flight-plan', [authenticateToken, ...validateFlightPlan], async (req, res) => {
     try {
         const errors = validationResult(req);
         if (!errors.isEmpty()) {
@@ -202,8 +199,8 @@ router.post('/flight-plan', [validateFlightPlan, verifyGamepass], async (req, re
 
 // Start flight
 router.post('/start-flight', [
-    body('flightPlanId').isString().trim().notEmpty(),
-    verifyGamepass
+    authenticateToken,
+    body('flightPlanId').isString().trim().notEmpty()
 ], async (req, res) => {
     try {
         const errors = validationResult(req);
@@ -238,7 +235,7 @@ router.post('/start-flight', [
 });
 
 // Request rank assessment
-router.post('/rank-assessment', verifyGamepass, async (req, res) => {
+router.post('/rank-assessment', authenticateToken, async (req, res) => {
     try {
         const stats = pilotStats.get(req.user.id);
         if (!stats) {
