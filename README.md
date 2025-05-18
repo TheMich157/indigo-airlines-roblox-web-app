@@ -1,130 +1,199 @@
+# IndiGo Airlines Roblox Integration
 
-
----
-
-# IndiGo Airlines Roblox Website
-
-## Project Overview
-IndiGo Airlines Roblox is a web application designed to manage the operations of an airline in a Roblox gaming environment. This application facilitates user authentication, flight management, and booking through a RESTful API and provides a real-time connection via Socket.IO for live features such as ATC (Air Traffic Control) clearances and voice channels.
-
-## Installation
-
-To get started with the IndiGo Airlines Roblox application, follow these instructions:
-
-1. **Clone the repository**:
-
-   ```bash
-   git clone https://github.com/yourusername/indigo-airlines-roblox.git
-   cd indigo-airlines-roblox
-   ```
-
-2. **Install dependencies**:
-
-   Make sure you have [Node.js](https://nodejs.org/) installed on your machine. Then run:
-
-   ```bash
-   npm install
-   ```
-
-3. **Set up environment variables**:
-
-   Create a `.env` file in the root directory and configure it according to your environment settings, particularly the secret for JWT tokens.
-
-4. **Run the application**:
-
-   You can start the application using either of the following commands:
-
-   For development mode (with auto-reload):
-
-   ```bash
-   npm run dev
-   ```
-
-   For production mode:
-
-   ```bash
-   npm start
-   ```
-
-## Usage
-
-Once the server is running, you can interact with the API or connect via the frontend interface. The server will be accessible at `http://localhost:8000` (or the port you configured in your `.env` file).
-
-### API Endpoints
-
-- **Authentication**:
-  - `POST /api/auth/roblox`: Authenticate a user.
-  
-- **Flights**:
-  - `POST /api/flights`: Create a new flight.
-  - `GET /api/flights`: Retrieve all flights.
-
-- **Bookings**:
-  - `POST /api/bookings`: Create a new booking.
-  - `GET /api/bookings/:userId`: Retrieve bookings for a specific user.
-
-- **ATC Clearances**:
-  - `POST /api/atc/clearance`: Issue an ATC clearance.
-
-- **Pilot Logs**:
-  - `GET /api/pilot/logs/:pilotId`: Retrieve logs for a specific pilot.
-  - `POST /api/pilot/logs`: Submit a new pilot log.
-
-### Real-time Features
-
-The application uses Socket.IO for real-time events:
-- Listen for ATC clearances by subscribing to the `clearance_issued` event.
-- Join voice channels using the `join_voice_channel` feature.
+A full-stack web application that integrates with Roblox to provide airline management, flight booking, and air traffic control features for IndiGo Airlines' Roblox experience.
 
 ## Features
 
-- User authentication using JWT for secure access.
-- RESTful API design for managing flights, bookings, and pilot logs.
-- Real-time communication for ATC clearances and voice communication using Socket.IO.
-- Static file serving for front-end assets.
-- Middleware for enhanced API security and error handling.
+### User Management
+- Roblox OAuth integration for secure authentication
+- Role-based access control (Passengers, Pilots, ATC, Supervisors, Admins)
+- Group rank synchronization with Roblox group
+- Gamepass verification for premium features
 
-## Dependencies
+### Flight Operations
+- Real-time flight tracking and management
+- Dynamic scheduling system
+- Seat booking with class differentiation (Economy/Business)
+- Flight plan filing and approval system
+- Aircraft and route management
 
-The project uses the following main dependencies:
+### Air Traffic Control
+- Live ATC position management
+- Real-time clearance system
+- Weather reporting and monitoring
+- Voice communication channels
+- Flight progress tracking
 
-- **Express**: Web framework for Node.js.
-- **CORS**: Middleware for enabling CORS in the application.
-- **dotenv**: Module to load environment variables from a `.env` file.
-- **jsonwebtoken**: For creating and verifying JSON Web Tokens.
-- **Socket.IO**: For real-time web socket communication.
-- **Nodemon** (devDependency): Automatically restarts the server during development when file changes are detected.
+### Pilot Features
+- Flight logging system
+- Rank progression tracking
+- Aircraft qualification management
+- Route assignments
+- Performance analytics
 
-## Project Structure
+### Booking System
+- Real-time seat availability
+- Class-based booking (Economy/Business)
+- Temporary seat holds
+- Booking modifications and cancellations
+- E-ticket generation with QR codes
 
-The project directory is organized as follows:
+## Technical Stack
 
-```
-indigo-airlines-roblox/
-│
-├── routes/                 # Directory for API route modules
-│   ├── auth.js             # Authentication routes
-│   ├── flights.js          # Flight management routes (placeholder)
-│   ├── bookings.js         # Booking management routes (placeholder)
-│   ├── atc.js              # ATC routes (placeholder)
-│   └── pilot.js            # Pilot routes (placeholder)
-│
-├── public/                 # Directory for static assets
-│   └── index.html          # Main HTML file served to clients
-│
-├── .env                    # Environment variables
-├── package.json            # Project metadata and dependencies
-├── package-lock.json       # Detailed dependency tree
-└── server.js               # Entry point for the application
-```
+### Backend
+- Node.js with Express
+- Socket.IO for real-time communications
+- JWT for authentication
+- Redis for session management
+- Winston for logging
+- Express-validator for input validation
+
+### Frontend
+- React.js (separate repository)
+- Tailwind CSS for styling
+- Socket.IO client for real-time updates
+- Axios for API requests
+
+### Security
+- Helmet for HTTP headers
+- Rate limiting
+- CORS protection
+- Input validation
+- JWT token management
+- Cookie security
+
+## Getting Started
+
+### Prerequisites
+- Node.js >= 18.0.0
+- npm or yarn
+- Redis server (optional for development)
+
+### Environment Setup
+1. Clone the repository:
+\`\`\`bash
+git clone https://github.com/your-org/indigo-airlines-roblox.git
+cd indigo-airlines-roblox
+\`\`\`
+
+2. Install dependencies:
+\`\`\`bash
+npm install
+\`\`\`
+
+3. Create a .env file:
+\`\`\`env
+# Server Configuration
+PORT=8000
+NODE_ENV=development
+
+# JWT Configuration
+JWT_SECRET=your-super-secret-key-change-in-production
+JWT_EXPIRY=7d
+
+# Roblox Configuration
+ROBLOX_GROUP_ID=12345678
+ROBLOX_PLACE_ID=87654321
+ROBLOX_GAMEPASS_ID=98765432
+ROBLOX_OAUTH_CLIENT_ID=your-client-id
+ROBLOX_OAUTH_CLIENT_SECRET=your-client-secret
+ROBLOX_COOKIE=your-roblox-cookie
+
+# Cookie Configuration
+COOKIE_SECRET=another-super-secret-key-change-in-production
+
+# Rate Limiting
+RATE_LIMIT_WINDOW=15
+RATE_LIMIT_MAX_REQUESTS=100
+
+# Socket.IO Configuration
+SOCKET_PING_TIMEOUT=5000
+SOCKET_PING_INTERVAL=10000
+\`\`\`
+
+### Running the Application
+
+Development mode:
+\`\`\`bash
+npm run dev
+\`\`\`
+
+Production mode:
+\`\`\`bash
+npm start
+\`\`\`
+
+## API Documentation
+
+### Authentication Endpoints
+- POST /api/auth/login - Roblox OAuth login
+- POST /api/auth/game-auth - Game server authentication
+- POST /api/auth/logout - User logout
+- POST /api/auth/refresh-token - Refresh JWT token
+
+### Flight Endpoints
+- GET /api/flights - List all flights
+- POST /api/flights - Create new flight
+- GET /api/flights/:id - Get flight details
+- PATCH /api/flights/:id/status - Update flight status
+- POST /api/flights/:id/crew - Assign crew
+
+### Booking Endpoints
+- GET /api/bookings/user/:userId - Get user bookings
+- POST /api/bookings - Create booking
+- POST /api/bookings/hold-seat - Hold seat temporarily
+- POST /api/bookings/:id/cancel - Cancel booking
+- GET /api/bookings/:id/receipt - Get booking receipt
+
+### ATC Endpoints
+- GET /api/atc/active-flights - Get active flights
+- POST /api/atc/clearance - Issue clearance
+- POST /api/atc/position/take - Take ATC position
+- POST /api/atc/weather/report - Submit weather report
+
+### Pilot Endpoints
+- GET /api/pilot/logs/:pilotId - Get pilot logs
+- POST /api/pilot/logs - Add flight log
+- POST /api/pilot/flight-plan - File flight plan
+- GET /api/pilot/stats/:pilotId - Get pilot statistics
+
+## WebSocket Events
+
+### Flight Events
+- flight_created
+- flight_updated
+- flight_status_updated
+- flight_crew_assigned
+
+### ATC Events
+- clearance_issued
+- position_taken
+- weather_updated
+- voice_channel_joined
+
+### Booking Events
+- booking_created
+- booking_cancelled
+- seat_hold_expired
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit issues or pull requests to enhance the functionality of the IndiGo Airlines Roblox project.
+1. Fork the repository
+2. Create your feature branch (\`git checkout -b feature/AmazingFeature\`)
+3. Commit your changes (\`git commit -m 'Add some AmazingFeature'\`)
+4. Push to the branch (\`git push origin feature/AmazingFeature\`)
+5. Open a Pull Request
 
 ## License
 
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for more details.
+This project is licensed under the MIT License - see the LICENSE file for details.
 
-```
-This README provides comprehensive details about the project, including installation instructions, usage specifics, features, dependencies, and project structure, making it easy for developers to understand and contribute to the IndiGo Airlines Roblox application.
+## Acknowledgments
+
+- Roblox Developer Relations team
+- IndiGo Airlines Roblox Group members
+- Open source community
+
+## Support
+
+For support, please join our [Discord server](https://discord.gg/indigoairlines) or create an issue in the repository.
