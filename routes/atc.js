@@ -11,6 +11,12 @@ const atcPositions = new Map();
 const weatherReports = new Map();
 
 // Validation middleware
+const validatePilotId = param('userId')
+    .isString()
+    .trim()
+    .notEmpty()
+    .withMessage('Valid pilot ID is required');
+
 const validateClearance = [
     body('flightId').isString().trim().notEmpty(),
     body('type').isIn(['pushback', 'taxi', 'takeoff', 'landing', 'approach', 'handoff']),
@@ -228,7 +234,7 @@ router.post('/weather/report', [validateWeatherReport, verifyGamepass], async (r
 });
 
 // Get ATC statistics
-router.get('/stats/:userId', validatePilotId, async (req, res) => {
+router.get('/stats/:userId', [validatePilotId], async (req, res) => {
     try {
         const errors = validationResult(req);
         if (!errors.isEmpty()) {
